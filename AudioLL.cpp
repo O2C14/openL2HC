@@ -44,7 +44,7 @@ uint64_t ReadBitsInDWORD(read_index2* i32, int nbits) {
     return result;
   }
   if ((i32->stream_buffer_size_x8) < (i32->read_bits + nbits)) {
-    puts("bits is not enough");
+    //puts("bits is not enough");
     return 0;
   }
 
@@ -82,52 +82,6 @@ void subi32(read_index2* i32, int nbits) {
 }
 
 uint8_t stream_buffer[4000];
-
-#if 0
-
-#if defined(__GNUC__) || defined(__clang__)
-#if defined(__x86_64__) || defined(__i386__)
-#define BSWAP_SUPPORTED
-#endif
-#endif
-
-#ifdef BSWAP_SUPPORTED
-#define bswap16 __builtin_bswap16
-#define bswap32 __builtin_bswap32
-#define bswap64 __builtin_bswap64
-#else
-template <typename T>
-T bswap(T value) {
-  static_assert(std::is_integral<T>::value, "bswap only works with integral types");
-  uint8_t* ptr = reinterpret_cast<uint8_t*>(&value);
-  for (size_t i = 0, j = sizeof(T) - 1; i < j; ++i, --j) {
-    std::swap(ptr[i], ptr[j]);
-  }
-  return value;
-}
-
-template <typename T>
-T bswap16(T value) {
-  static_assert(std::is_integral<T>::value, "bswap16 only works with integral types");
-  uint16_t result = bswap(static_cast<uint16_t>(value));
-  return static_cast<T>(result);
-}
-
-template <typename T>
-T bswap32(T value) {
-  static_assert(std::is_integral<T>::value, "bswap32 only works with integral types");
-  uint32_t result = bswap(static_cast<uint32_t>(value));
-  return static_cast<T>(result);
-}
-
-template <typename T>
-T bswap64(T value) {
-  static_assert(std::is_integral<T>::value, "bswap64 only works with integral types");
-  uint64_t result = bswap(static_cast<uint64_t>(value));
-  return static_cast<T>(result);
-}
-#endif
-#endif
 
 void AudioBitstreamRearrangeByte(uint32_t* stream_buffer, size_t s) {
   int32_t DWORD_NUM;  // x8
@@ -171,7 +125,7 @@ int32_t FoldingParamA[480];
 int32_t FoldingParamB[480];
 int32_t FoldingParamC[480];
 
-int32_t _TwParamA[240];  // 32
+int32_t _TwParamA[240];
 int32_t _TwParamB[240];
 int32_t _TwParamC[480];
 int32_t _TwParamD[480];
@@ -201,7 +155,7 @@ void LLinit(int32_t frLength, int32_t intrinsic_delay) {
     auto tmp_cos = cos((double)(i * 2 + 1) * M_PI / (double)(4 * frLength));
     RotationTable_tan[i] = ((tmp_cos + -1.0) / tmp_sin * INT32_MAX_F);
   }
-  /**/
+
   for (size_t i = 0; i < half_intrinsic_delay; i++) {
     FoldingParamB[i] = -g_mdctHraWindow[half_frLength - half_intrinsic_delay + i];
   }
@@ -252,23 +206,6 @@ void LLinit(int32_t frLength, int32_t intrinsic_delay) {
       FoldingParamC[half_intrinsic_delay + i] = 0x7FFFFFFF;
     }
   }
-  /*
-  puts("return A");
-  for (size_t i = 0; i < 240; i++) {
-    printf(" %04x,", FoldingParamA[i]);
-  }
-  printf("\n\n\n\n");
-  puts("return B");
-  for (size_t i = 0; i < 240; i++) {
-    printf(" %04x,", FoldingParamB[i]);
-  }
-  printf("\n\n\n\n");
-  puts("return C");
-  for (size_t i = 0; i < 240; i++) {
-    printf(" %04x,", FoldingParamC[i]);
-  }
-  printf("\n\n\n\n");
-  */
   for (size_t i = 0; i < frLength / 4; i++) {
     _TwParamA[i] = cos((double)(i * 8 + 1) * -M_PI / (double)(frLength * 4)) * INT32_MAX_F;
   }
@@ -409,10 +346,6 @@ void LLunpack(int one_pack_size, int pack_index) {
   int32_t(*DataFromStream)[frLength];
   *(int32_t**)&DataFromStream = new int32_t[channels * frLength];
   memset(DataFromStream, 0, sizeof(int32_t) * channels * frLength);
-  /*
-    int32_t(*ImdctPrevious)[frLength];
-    *(int32_t**)&ImdctPrevious = new int32_t[channels * frLength];
-  */
   if (a8 != 2) {  // sub_206DC
     puts("a8 must equal 2");
   }
