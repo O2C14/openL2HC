@@ -890,7 +890,9 @@ void LLunpack(int one_pack_size, int pack_index) {
           }
           memcpy(DataFromStream[const1_i + channels_i], unpack_data[const1_i], frLength * sizeof(int32_t));
         }
-
+        operator delete[](psyScalefactor);
+        operator delete[](psyScalefactor_bak);
+        operator delete[](inner_mem_pool3);
         operator delete[](is_set_signed);
         operator delete[](had_signed);
         operator delete[](unpack_data);
