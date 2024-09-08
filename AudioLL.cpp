@@ -43,6 +43,10 @@ uint64_t ReadBitsInDWORD(read_index2* i32, int nbits) {
   if (!nbits) {
     return result;
   }
+  if ((i32->stream_buffer_size_x8) < (i32->read_bits + nbits)) {
+    puts("bits is not enough");
+    return 0;
+  }
 
   if (32 - i32->index_in_DWORD < nbits) {
     int Remaining_bits = nbits - (32 - i32->index_in_DWORD);
@@ -287,7 +291,7 @@ int32_t ImdctPrevious[2][960];
 int32_t old_frLength = 0;
 int32_t old_band_split_scale = 0;
 kiss_fft_cfg cfg;
-
+int32_t print_times = 0;
 void AudioWaveOutputFromInt24(int32_t* in, int32_t frLength, int32_t channels, int bitPerSample, void* pcm_out);
 void LLunpack(int one_pack_size, int pack_index) {
   uint32_t* stream_buffer_s32 = (uint32_t*)stream_buffer;
@@ -582,12 +586,6 @@ void LLunpack(int one_pack_size, int pack_index) {
         operator delete[](is_set_signed);
         operator delete[](had_signed);
         operator delete[](unpack_data);
-        /*
-        printf("read times %d\n", read_times);
-        printf("i32.index_in_DWORD %d\n", i32.index_in_DWORD);
-        printf("i32.index_in_stream %d\n", i32.index_in_stream);
-        printf("i32.read_bits %d\n", i32.read_bits);
-        */
       } else {
         // CBR
         int32_t read_times = 0;
@@ -623,16 +621,6 @@ void LLunpack(int one_pack_size, int pack_index) {
             if (iVar6 < pre_val || iVar6 == 0) {
               break;
             }
-            /*
-            do {
-              if (iVar6 == 0) {
-                Nband = (uint)newNband;
-                goto LAB_0011bc1c;
-              }
-              iVar6 = iVar6 + -1;
-              pre_val = pre_val + -1;
-            } while (pre_val != 0);
-            */
           }
           pre_val = next_val;
         }
@@ -657,10 +645,8 @@ void LLunpack(int one_pack_size, int pack_index) {
               quantScale[channels_i + const1_i][Nband_i + const0] = tmp_p.data;
               subi32(&i32, 8 - tmp_p.nbits);
             }
-            // printf("%d ,", huffDecBand[channels_i][Nband_i]);
           }
         }
-        // printf(" \n");
         for (size_t const1_i = 0; const1_i < const1; const1_i++) {
           for (size_t Nband_i = 0; Nband_i < newNband; Nband_i++) {
             if (quantScale[const1_i + channels_i][Nband_i] > 32) {
@@ -674,9 +660,9 @@ void LLunpack(int one_pack_size, int pack_index) {
         int32_t(*psyScalefactor_bak)[Nband];
         *(int32_t**)&psyScalefactor_bak = new int32_t[const1 * Nband];
 
-        memcpy(psyScalefactor_bak, quantScale, sizeof(int32_t) * Nband * const1);
-        memcpy(psyScalefactor, quantScale, sizeof(int32_t) * Nband * const1);
-        memset(quantScale,0,sizeof(int32_t) * Nband * const1);
+        memcpy(psyScalefactor_bak, quantScale[channels_i], sizeof(int32_t) * Nband * const1);
+        memcpy(psyScalefactor, quantScale[channels_i], sizeof(int32_t) * Nband * const1);
+        memset(quantScale[channels_i], 0, sizeof(int32_t) * Nband * const1);
         auto AudioBandPsyAcoustic = [](int* p_psyScalefactor, int nband, int x, int* out) {
           int max = p_psyScalefactor[0];
           for (size_t i = 0; i < nband; i++) {
@@ -705,27 +691,34 @@ void LLunpack(int one_pack_size, int pack_index) {
         *(int32_t**)&inner_mem_pool3 = new int32_t[const1 * Nband];
         int continue_flag = 0;
         int loop_index = 0;
+
         do {
-          int x1 = 3 * ((loop_index + 1) % 3);
+          int x1 = 3 * ((++loop_index) % 3);
           if (x1 < 1) {
             x1 = 1;
           }
+          continue_flag = 0;
           for (size_t const1_i = 0; const1_i < const1; const1_i++) {
             continue_flag |= AudioBandPsyAcoustic(psyScalefactor[const1_i], Nband, x1, inner_mem_pool3[const1_i]);
+
             for (size_t Nband_i = 0; Nband_i < newNband; Nband_i++) {
               psyScalefactor[const1_i][Nband_i] -= inner_mem_pool3[const1_i][Nband_i];
-              quantScale[const1_i][Nband_i] = psyScalefactor_bak[const1_i][Nband_i] - psyScalefactor[const1_i][Nband_i];
+              quantScale[const1_i + channels_i][Nband_i] =
+                  psyScalefactor_bak[const1_i][Nband_i] - psyScalefactor[const1_i][Nband_i];
             }
           }
           // AudioEstimateBitCount
           int EstimateBitCount = 0;
           for (size_t const1_i = 0; const1_i < const1; const1_i++) {
             for (size_t Nband_i = 0; Nband_i < newNband; Nband_i++) {
-              EstimateBitCount += (BandId[Nband_i + 1] - BandId[Nband_i]) * (quantScale[const1_i][Nband_i] + 2);
+              EstimateBitCount +=
+                  (BandId[Nband_i + 1] - BandId[Nband_i]) * (quantScale[const1_i + channels_i][Nband_i] + 2);
             }
           }
-          if ((EstimateBitCount < (Remaining_bits + already_Readbits - i32.read_bits)) && continue_flag) {
+
+          if ((EstimateBitCount >= (Remaining_bits + already_Readbits - i32.read_bits)) || !continue_flag) {
             for (size_t Nband_i = 0; Nband_i < newNband; Nband_i++) {
+              print_times += 1;
               for (size_t const1_i = 0; const1_i < const1; const1_i++) {
                 auto NoiseFloorScale = psyScalefactor[const1_i][Nband_i];
                 if (quantScale[channels_i + const1_i][Nband_i] <= 0) {
@@ -734,6 +727,11 @@ void LLunpack(int one_pack_size, int pack_index) {
                 if (quantScale[channels_i + const1_i][Nband_i] == 2) {
                   int32_t tmpBandId = BandId[Nband_i];
                   while (tmpBandId < BandId[Nband_i + 1]) {
+                    if (i32.read_bits >= (Remaining_bits + already_Readbits - 12)) {
+                      // printf("out of read\n");
+                      continue_flag = 0;
+                      break;
+                    }
                     auto tmp_p3 = g_huffDecBandQsLayerQ2[ReadBitsInDWORD(&i32, 3)];
                     subi32(&i32, 3 - tmp_p3.nbits);
                     unpack_data[const1_i][tmpBandId] += (tmp_p3.data << NoiseFloorScale);
@@ -752,6 +750,11 @@ void LLunpack(int one_pack_size, int pack_index) {
                   if (tmpBandsize >= 3) {
                     int32_t BandIdoffset = 2;
                     for (size_t i = 0; i < band_size_div3; BandIdoffset += 3, i++) {
+                      if (i32.read_bits >= (Remaining_bits + already_Readbits - 12)) {
+                        // printf("out of read\n");
+                        continue_flag = 0;
+                        break;
+                      }
                       auto tmp_p4 = g_huffDecBandQsLayerQ3[ReadBitsInDWORD(&i32, 5)];
                       int32_t huff_data_2bit = ((tmp_p4.data >> 2) & 1) << NoiseFloorScale;
                       int32_t huff_data_1bit = ((tmp_p4.data >> 1) & 1) << NoiseFloorScale;
@@ -782,7 +785,12 @@ void LLunpack(int one_pack_size, int pack_index) {
                   if (band_size_remain3 >= 1) {
                     for (size_t band_size_remain3_index = 0; band_size_remain3_index < band_size_remain3;
                          band_size_remain3_index++) {
-                      auto tmp_p5 = ReadBitsInDWORD(&i32, 1);
+                      if (i32.read_bits >= (Remaining_bits + already_Readbits - 12)) {
+                        // printf("out of read\n");
+                        continue_flag = 0;
+                        break;
+                      }
+                      auto tmp_p5 = ReadBitsInDWORD(&i32, 1) << NoiseFloorScale;
                       auto tmp_index = band_size_round3 + band_size_remain3_index + BandId[Nband_i];
                       unpack_data[const1_i][tmp_index] += tmp_p5;
                       if (!is_set_signed[const1_i][tmp_index] && tmp_p5 >= 1) {
@@ -796,6 +804,11 @@ void LLunpack(int one_pack_size, int pack_index) {
                   int32_t tmpBandId = BandId[Nband_i];
 
                   while (tmpBandId < BandId[Nband_i + 1]) {
+                    if (i32.read_bits >= (Remaining_bits + already_Readbits - 12)) {
+                      // printf("out of read\n");
+                      continue_flag = 0;
+                      break;
+                    }
                     auto tmp_p6 = g_huffDecBandQsLayerQ3[ReadBitsInDWORD(&i32, 5)];
                     subi32(&i32, 5 - tmp_p6.nbits);
                     auto tmp_data = tmp_p6.data << need_read;
@@ -814,13 +827,62 @@ void LLunpack(int one_pack_size, int pack_index) {
               }
             }
             memcpy(psyScalefactor_bak, psyScalefactor, sizeof(int32_t) * Nband * const1);
+          } else {
+            if ((EstimateBitCount >= (Remaining_bits + already_Readbits - i32.read_bits))) {
+              continue_flag = 0;
+            }
           }
         } while (continue_flag);
-
-        auto AudioGetBandQsTotal = []() {
-
+        /*
+        for (size_t j = 0; j < 480; j++)
+        {
+          printf("%d ,",unpack_data[0][j]);
+        }
+        printf("\n");
+        */
+        auto AudioGetBandQsTotal = [](int* psyScalefactor, int Nband, int* pBandId) {
+          uint16_t res = 0;
+          for (size_t Nband_i = 0; Nband_i < Nband; Nband_i++) {
+            res += (pBandId[Nband_i + 1] - pBandId[Nband_i]) * psyScalefactor[Nband_i];
+            // printf(" %d,",psyScalefactor[Nband_i]);
+          }
+          // printf("\n");
+          return res;
         };
         for (size_t const1_i = 0; const1_i < const1; const1_i++) {
+          int32_t BandQsTotal = AudioGetBandQsTotal(psyScalefactor[const1_i], newNband, BandId);
+          int32_t BandQsTotal_bak = BandQsTotal;
+          for (size_t Nband_i = 0; Nband_i < newNband; Nband_i++) {
+            auto pSf = psyScalefactor[const1_i][Nband_i];
+            if (pSf <= 1) pSf = 0;
+            if (pSf != 0 && Nband_i < (newNband >> 1)) {
+              pSf -= 1;
+            }
+            for (size_t j = BandId[Nband_i]; j < BandId[Nband_i + 1]; j++) {
+              auto t114 = unpack_data[const1_i][j];
+              if (t114 >= 1) {
+                BandQsTotal = (int16_t)(0x7C4D * BandQsTotal + 0x3619);
+                auto tmp_mask = (~(0xffffffff << pSf));
+                auto gain = (0x7FFF * BandQsTotal) & tmp_mask;
+                unpack_data[const1_i][j] += gain;
+              }
+            }
+          }
+          if (a13 == 1) {
+            for (size_t Nband_i = 0; Nband_i < newNband; Nband_i++) {
+              auto pSf = psyScalefactor[const1_i][Nband_i] - 3;
+              if (pSf <= 0) {
+                continue;
+              }
+              for (size_t j = BandId[Nband_i]; j < BandId[Nband_i + 1]; j++) {
+                BandQsTotal_bak = (int16_t)(0x7C4D * BandQsTotal_bak + 0x3619);
+                if (!unpack_data[const1_i][j]) {
+                  unpack_data[const1_i][j] = ~(-1 << pSf);
+                  had_signed[const1_i][j] = BandQsTotal_bak < 0x8000;
+                }
+              }
+            }
+          }
           for (size_t frLength_index = 0; frLength_index < frLength; frLength_index++) {
             if (had_signed[const1_i][frLength_index] > 0) {
               unpack_data[const1_i][frLength_index] = -unpack_data[const1_i][frLength_index];
@@ -832,12 +894,6 @@ void LLunpack(int one_pack_size, int pack_index) {
         operator delete[](is_set_signed);
         operator delete[](had_signed);
         operator delete[](unpack_data);
-        /*
-        printf("read times %d\n", read_times);
-        printf("i32.index_in_DWORD %d\n", i32.index_in_DWORD);
-        printf("i32.index_in_stream %d\n", i32.index_in_stream);
-        printf("i32.read_bits %d\n", i32.read_bits);
-        */
       }
     }
   }
@@ -875,16 +931,6 @@ void LLunpack(int one_pack_size, int pack_index) {
   if (isInterleaveStream == 1) {
     AudioIntInvMs(DataFromStream[0], DataFromStream[1], frLength);
   }
-  /*
-  for (size_t i = 0; i < channels; i++)
-  {
-    for (size_t j = 0; j < 480; j++)
-    {
-      printf("%d,", -DataFromStream[i][j]);
-    }
-    printf("\n\n");
-  }
-  */
 
   if (a9 != 1) {
     puts("a9 must equal 1");
@@ -918,7 +964,7 @@ void LLunpack(int one_pack_size, int pack_index) {
     } else if (over_flowing_bits < 0) {
       over_flowing_bits = 0;
     }
-    /**/
+
     for (size_t i = 0; i < len; i++) {
       inner_mem_block1[i] = (in[i] >> over_flowing_bits);  // * (len >> 1);//* (len >> 1)是因为kissfft的算法问题
     }
@@ -939,21 +985,7 @@ void LLunpack(int one_pack_size, int pack_index) {
     }
 
     kiss_fft(cfg, (kiss_fft_cpx*)inner_mem_block1, (kiss_fft_cpx*)inner_mem_block2);
-    /*
-    for (size_t i = 0; i < len; i+=2)
-    {
-      inner_mem_block2[i]>>=over_flowing_bits;
-      inner_mem_block2[i+1]>>=over_flowing_bits;
-    }
-    for (size_t i = 0; i < len; i+=2)
-    {
-      printf("%d%c%dj,",
-      ((int*)inner_mem_block2)[i],
-      ((int*)inner_mem_block2)[i+1]>0?'+':'-',
-      ((int*)inner_mem_block2)[i+1]>0?((int*)inner_mem_block2)[i+1]:-((int*)inner_mem_block2)[i+1]);
-    }
-    printf("\n\n\n\n");
-    */
+
     for (size_t i = 0; i < len; i += 2) {
       auto tmp1 = inner_mem_block2[i];
       auto tmp2 = inner_mem_block2[i + 1];
@@ -971,9 +1003,7 @@ void LLunpack(int one_pack_size, int pack_index) {
     }
     int64_t normal = sqrt(0.5 / (double)len) * INT32_MAX_F;
     for (size_t i = 0; i < len; i++) {
-      // inner_mem_block[i] = (in[i] >> over_flowing_bits);
       out[i] = ((normal * out[i]) >> 31) << over_flowing_bits;
-      // out[i] = ((normal * out[i]) >> 31);
     }
     operator delete[](inner_mem_block1);
     operator delete[](inner_mem_block2);
@@ -1216,7 +1246,7 @@ char x[100];
 int main() {
   // bit_record = fopen("E:/codec/L2HC/bit_record3.bin", "wb");
   FILE* fp = NULL;
-  fp = fopen("E:/codec/L2HC/48kS32_enc.bin", "rb");
+  fp = fopen("./48kS32_enc.bin", "rb");
 
   int read_count = 0;
   int one_pack_size = 0;
@@ -1225,20 +1255,19 @@ int main() {
 
   int file_size = ftell(fp);
   fseek(fp, 0, SEEK_SET);
-#if 0
+#if 1
   size_t i = 0;
-  wave_file_out = fopen("E:/codec/L2HC/48kS32_test.wav", "wb");
+  wave_file_out = fopen("./48kS32_tests.wav", "wb");
   memset(x, ' ', sizeof(x));
   x[4 + 52] = 0;
-  int old_rate=-1;
+  int old_rate = -1;
   for (i = 0; read_count < file_size; i++) {
     fread(&one_pack_size, 1, 4, fp);
     fread(stream_buffer, 1, one_pack_size, fp);
     read_count += one_pack_size + 4;
 
     int rate = (int)(((double)read_count) * 100. / (double)file_size);
-    if (rate!=old_rate)
-    {
+    if (rate != old_rate) {
       sprintf(&x[0], "%2d", rate);
       x[2] = '%';
       x[3] = '[';
@@ -1253,13 +1282,12 @@ int main() {
     if(i==2){
       break;
     }*/
-    
-
   }
+  printf("\n");
   fseek(wave_file_out, 0, SEEK_SET);
 
-  wave_write_header(wave_file_out,32,4,48000,2,i*480);
-  
+  wave_write_header(wave_file_out, 32, 4, 48000, 2, i * 480);
+
   fclose(wave_file_out);
 #else
   fread(&one_pack_size, 1, 4, fp);
