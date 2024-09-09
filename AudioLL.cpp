@@ -137,55 +137,56 @@ void LLinit(int32_t frLength, int32_t intrinsic_delay) {
   int32_t half_intrinsic_delay = intrinsic_delay >> 1;
   int32_t half_frLength = frLength >> 1;
   int32_t half_active_length = (frLength - intrinsic_delay) >> 1;
+  size_t i;
   if (frLength == 480 && intrinsic_delay == 120) {
-    for (size_t i = 0; i < 960; i++) {
+    for (i = 0; i < 960; i++) {
       g_mdctHraWindow[i] = 2 * g_mdctHraWindow480With10MsQ30[i];
     }
 
   } else if (frLength == 960 || intrinsic_delay == 240) {
-    for (size_t i = 0; i < 1920; i++) {
+    for (i = 0; i < 1920; i++) {
       g_mdctHraWindow[i] = 2 * g_mdctHraWindow960With10MsQ30[i];
     }
   } else {
     return;
   }
-  for (size_t i = 0; i < half_frLength; i++) {
+  for (i = 0; i < half_frLength; i++) {
     auto tmp_sin = sin((double)(i * 2 + 1) * M_PI / (double)(4 * frLength));
     RotationTable_sin[i] = (tmp_sin * INT32_MAX_F);
     auto tmp_cos = cos((double)(i * 2 + 1) * M_PI / (double)(4 * frLength));
     RotationTable_tan[i] = ((tmp_cos + -1.0) / tmp_sin * INT32_MAX_F);
   }
 
-  for (size_t i = 0; i < half_intrinsic_delay; i++) {
+  for (i = 0; i < half_intrinsic_delay; i++) {
     FoldingParamB[i] = -g_mdctHraWindow[half_frLength - half_intrinsic_delay + i];
   }
 
-  for (size_t i = 0; i < half_intrinsic_delay; i++) {
+  for (i = 0; i < half_intrinsic_delay; i++) {
     FoldingParamA[i] = g_mdctHraWindow[frLength + half_frLength - half_intrinsic_delay + i] - 0x7FFFFFFF;
   }
 
-  for (size_t i = 0; i < half_intrinsic_delay; i++) {
+  for (i = 0; i < half_intrinsic_delay; i++) {
     FoldingParamA[i] = (int32_t)((double)FoldingParamA[i] / (double)FoldingParamB[i] * INT32_MAX_F);
   }
-  for (size_t i = 0; i < half_intrinsic_delay; i++) {
+  for (i = 0; i < half_intrinsic_delay; i++) {
     FoldingParamC[i] = g_mdctHraWindow[half_frLength + half_intrinsic_delay - i - 1];
   }
-  for (size_t i = 0; i < half_intrinsic_delay; i++) {
+  for (i = 0; i < half_intrinsic_delay; i++) {
     FoldingParamC[i] -= 0x7FFFFFFF;
   }
-  for (size_t i = 0; i < half_intrinsic_delay; i++) {
+  for (i = 0; i < half_intrinsic_delay; i++) {
     FoldingParamC[i] = (int32_t)((double)FoldingParamC[i] / (double)FoldingParamB[i] * INT32_MAX_F);
   }
 
-  for (size_t i = 0; i < half_active_length; i++) {
+  for (i = 0; i < half_active_length; i++) {
     FoldingParamB[half_intrinsic_delay + i] = -g_mdctHraWindow[i];
   }
 
-  for (size_t i = 0; i < half_active_length; i++) {
+  for (i = 0; i < half_active_length; i++) {
     FoldingParamA[half_intrinsic_delay + i] = g_mdctHraWindow[frLength + i] - 0x7FFFFFFF;
   }
 
-  for (size_t i = 0; i < half_active_length; i++) {
+  for (i = 0; i < half_active_length; i++) {
     FoldingParamA[half_intrinsic_delay + i] = (int32_t)((double)FoldingParamA[half_intrinsic_delay + i] /
                                                         (double)FoldingParamB[half_intrinsic_delay + i] * INT32_MAX_F);
     if (FoldingParamA[half_intrinsic_delay + i] == 0x80000000 && half_intrinsic_delay + i >= half_frLength / 2) {
@@ -193,31 +194,31 @@ void LLinit(int32_t frLength, int32_t intrinsic_delay) {
     }
   }
 
-  for (size_t i = 0; i < half_active_length; i++) {
+  for (i = 0; i < half_active_length; i++) {
     FoldingParamC[half_intrinsic_delay + i] = g_mdctHraWindow[frLength - i - 1];
   }
-  for (size_t i = 0; i < half_active_length; i++) {
+  for (i = 0; i < half_active_length; i++) {
     FoldingParamC[half_intrinsic_delay + i] -= 0x7FFFFFFF;
   }
-  for (size_t i = 0; i < half_active_length; i++) {
+  for (i = 0; i < half_active_length; i++) {
     FoldingParamC[half_intrinsic_delay + i] = (int32_t)((double)FoldingParamC[half_intrinsic_delay + i] /
                                                         (double)FoldingParamB[half_intrinsic_delay + i] * INT32_MAX_F);
     if (FoldingParamC[half_intrinsic_delay + i] == 0x80000000 && half_intrinsic_delay + i < half_frLength / 2) {
       FoldingParamC[half_intrinsic_delay + i] = 0x7FFFFFFF;
     }
   }
-  for (size_t i = 0; i < frLength / 4; i++) {
+  for (i = 0; i < frLength / 4; i++) {
     _TwParamA[i] = cos((double)(i * 8 + 1) * -M_PI / (double)(frLength * 4)) * INT32_MAX_F;
   }
 
-  for (size_t i = 0; i < frLength / 4; i++) {
+  for (i = 0; i < frLength / 4; i++) {
     _TwParamB[i] = sin((double)(i * 8 + 1) * -M_PI / (double)(frLength * 4)) * INT32_MAX_F;
   }
-  for (size_t i = 0; i < frLength / 2; i++) {
+  for (i = 0; i < frLength / 2; i++) {
     _TwParamC[i] = cos((double)(i * 8 + 1) * -M_PI / (double)(frLength * 4)) * INT32_MAX_F;
   }
 
-  for (size_t i = 0; i < frLength / 2; i++) {
+  for (i = 0; i < frLength / 2; i++) {
     _TwParamD[i] = sin((double)(i * 8 + 1) * -M_PI / (double)(frLength * 4)) * INT32_MAX_F;
   }
 }
@@ -227,7 +228,7 @@ int32_t BandId[64];
 int32_t ImdctPrevious[2][960];
 int32_t old_frLength = 0;
 int32_t old_band_split_scale = 0;
-kiss_fft_cfg cfg;
+kiss_fft_cfg fft_cfg;
 int32_t print_times = 0;
 void AudioWaveOutputFromInt24(int32_t* in, int32_t frLength, int32_t channels, int bitPerSample, void* pcm_out);
 void LLunpack(int one_pack_size, int pack_index) {
@@ -318,7 +319,7 @@ void LLunpack(int one_pack_size, int pack_index) {
 
   if (old_frLength != frLength) {
     LLinit(frLength, intrinsic_delay);
-    cfg = kiss_fft_alloc(frLength / 4, false, 0, 0);
+    fft_cfg = kiss_fft_alloc(frLength / 4, false, 0, 0);
     memset(ImdctPrevious, 0, sizeof(ImdctPrevious));
     old_frLength = frLength;
     wave_write_header(wave_file_out, bitPerSample, (bitPerSample >> 3), smpRate2, channels, frLength);
@@ -363,32 +364,34 @@ void LLunpack(int one_pack_size, int pack_index) {
   }
   int32_t Remaining_bits = (BitTarget - i32.read_bits) / channels;
 
+  int32_t read_times = 0;
+  int32_t const1 = 1;                 // about channel
+  size_t const1_i;
+  int32_t(*is_set_signed)[frLength];  // 符号位是否已赋值
+  *(int32_t**)&is_set_signed = new int32_t[frLength * const1];
+  int32_t(*had_signed)[frLength];  // 符号位
+  *(int32_t**)&had_signed = new int32_t[frLength * const1];
+  int32_t(*unpack_data)[frLength];  // 数据
+  *(int32_t**)&unpack_data = new int32_t[frLength * const1];
+  
   if (UsedCBR == 1 && a12 == 1 && out_channels < channels && !isInterleaveStream) {
   } else if (channels >= 1) {
     for (size_t channels_i = 0; channels_i < channels; channels_i++) {
+      memset(is_set_signed, 0, sizeof(int32_t) * frLength * const1);
+      memset(had_signed, 0, sizeof(int32_t) * frLength * const1);
+      memset(unpack_data, 0, sizeof(int32_t) * frLength * const1);
       if (UsedCBR != 1)  // if not CBR
       {
         // VBR
-        int32_t read_times = 0;
-        int32_t const1 = 1;                 // about channel
-        int32_t(*is_set_signed)[frLength];  // 符号位是否已赋值
-        *(int32_t**)&is_set_signed = new int32_t[frLength * const1];
-        memset(is_set_signed, 0, sizeof(int32_t) * frLength * const1);
-        int32_t(*had_signed)[frLength];  // 符号位
-        *(int32_t**)&had_signed = new int32_t[frLength * const1];
-        memset(had_signed, 0, sizeof(int32_t) * frLength * const1);
-        int32_t(*unpack_data)[frLength];  // 数据
-        *(int32_t**)&unpack_data = new int32_t[frLength * const1];
-        memset(unpack_data, 0, sizeof(int32_t) * frLength * const1);
-
         // int32_t diffFlag[const1];
         int32_t diffFlag[1];
-        for (size_t const1_i = 0; const1_i < const1; const1_i++) {
+
+        for (const1_i = 0; const1_i < const1; const1_i++) {
           diffFlag[const1_i] = ReadBitsInDWORD(&i32, 1);
         }
 
         int32_t const0 = 0;
-        for (size_t const1_i = 0; const1_i < const1; const1_i++) {
+        for (const1_i = 0; const1_i < const1; const1_i++) {
           for (size_t Nband_i = const0; Nband_i < Nband; Nband_i++) {
             if (diffFlag[const1_i]) {
               if (Nband_i == 0) {
@@ -412,7 +415,7 @@ void LLunpack(int one_pack_size, int pack_index) {
         }
         printf(" \n");
         if (const1 >= 1) {
-          for (size_t const1_i = 0; const1_i < const1; const1_i++) {
+          for (const1_i = 0; const1_i < const1; const1_i++) {
             for (size_t Nband_i = 0; Nband_i < Nband; Nband_i++) {
               if (quantScale[const1_i + channels_i][Nband_i] > 32) {
                 printf("error \n");
@@ -421,7 +424,7 @@ void LLunpack(int one_pack_size, int pack_index) {
           }
         }
         for (size_t Nband_i = 0; Nband_i < Nband; Nband_i++) {
-          for (size_t const1_i = 0; const1_i < const1; const1_i++) {
+          for (const1_i = 0; const1_i < const1; const1_i++) {
             if (quantScale[channels_i + const1_i][Nband_i] <= 0) {
               continue;
             }
@@ -507,7 +510,7 @@ void LLunpack(int one_pack_size, int pack_index) {
             }
           }
         }
-        for (size_t const1_i = 0; const1_i < const1; const1_i++) {
+        for (const1_i = 0; const1_i < const1; const1_i++) {
           for (size_t frLength_index = 0; frLength_index < frLength; frLength_index++) {
             if (had_signed[const1_i][frLength_index] > 0) {
               unpack_data[const1_i][frLength_index] = -unpack_data[const1_i][frLength_index];
@@ -515,28 +518,12 @@ void LLunpack(int one_pack_size, int pack_index) {
           }
           memcpy(DataFromStream[const1_i + channels_i], unpack_data[const1_i], frLength * sizeof(int32_t));
         }
-
-        operator delete[](is_set_signed);
-        operator delete[](had_signed);
-        operator delete[](unpack_data);
       } else {
         // CBR
-        int32_t read_times = 0;
-        int32_t const1 = 1;                 // about channel
-        int32_t(*is_set_signed)[frLength];  // 符号位是否已赋值
-        *(int32_t**)&is_set_signed = new int32_t[frLength * const1];
-        memset(is_set_signed, 0, sizeof(int32_t) * frLength * const1);
-        int32_t(*had_signed)[frLength];  // 符号位
-        *(int32_t**)&had_signed = new int32_t[frLength * const1];
-        memset(had_signed, 0, sizeof(int32_t) * frLength * const1);
-        int32_t(*unpack_data)[frLength];  // 数据
-        *(int32_t**)&unpack_data = new int32_t[frLength * const1];
-        memset(unpack_data, 0, sizeof(int32_t) * frLength * const1);
-
         // int32_t diffFlag[const1];
         int32_t already_Readbits = i32.read_bits;
         int32_t diffFlag[1];
-        for (size_t const1_i = 0; const1_i < const1; const1_i++) {
+        for (const1_i = 0; const1_i < const1; const1_i++) {
           diffFlag[const1_i] = ReadBitsInDWORD(&i32, 1);
         }
         auto tmp_f1 = fmin(fmax(sqrt((double)Remaining_bits / (double)(frLength * const1)), 0.2), 1.0);
@@ -559,7 +546,7 @@ void LLunpack(int one_pack_size, int pack_index) {
         }
 
         int32_t const0 = 0;
-        for (size_t const1_i = 0; const1_i < const1; const1_i++) {
+        for (const1_i = 0; const1_i < const1; const1_i++) {
           for (size_t Nband_i = const0; Nband_i < newNband; Nband_i++) {
             if (diffFlag[const1_i]) {
               if (Nband_i == 0) {
@@ -580,7 +567,7 @@ void LLunpack(int one_pack_size, int pack_index) {
             }
           }
         }
-        for (size_t const1_i = 0; const1_i < const1; const1_i++) {
+        for (const1_i = 0; const1_i < const1; const1_i++) {
           for (size_t Nband_i = 0; Nband_i < newNband; Nband_i++) {
             if (quantScale[const1_i + channels_i][Nband_i] > 32) {
               printf("error \n");
@@ -631,7 +618,7 @@ void LLunpack(int one_pack_size, int pack_index) {
             x1 = 1;
           }
           continue_flag = 0;
-          for (size_t const1_i = 0; const1_i < const1; const1_i++) {
+          for (const1_i = 0; const1_i < const1; const1_i++) {
             continue_flag |= AudioBandPsyAcoustic(psyScalefactor[const1_i], Nband, x1, inner_mem_pool3[const1_i]);
 
             for (size_t Nband_i = 0; Nband_i < newNband; Nband_i++) {
@@ -642,7 +629,7 @@ void LLunpack(int one_pack_size, int pack_index) {
           }
           // AudioEstimateBitCount
           int EstimateBitCount = 0;
-          for (size_t const1_i = 0; const1_i < const1; const1_i++) {
+          for (const1_i = 0; const1_i < const1; const1_i++) {
             for (size_t Nband_i = 0; Nband_i < newNband; Nband_i++) {
               EstimateBitCount +=
                   (BandId[Nband_i + 1] - BandId[Nband_i]) * (quantScale[const1_i + channels_i][Nband_i] + 2);
@@ -652,7 +639,7 @@ void LLunpack(int one_pack_size, int pack_index) {
           if ((EstimateBitCount >= (Remaining_bits + already_Readbits - i32.read_bits)) || !continue_flag) {
             for (size_t Nband_i = 0; Nband_i < newNband; Nband_i++) {
               print_times += 1;
-              for (size_t const1_i = 0; const1_i < const1; const1_i++) {
+              for (const1_i = 0; const1_i < const1; const1_i++) {
                 auto NoiseFloorScale = psyScalefactor[const1_i][Nband_i];
                 if (quantScale[channels_i + const1_i][Nband_i] <= 0) {
                   continue;
@@ -782,7 +769,7 @@ void LLunpack(int one_pack_size, int pack_index) {
           // printf("\n");
           return res;
         };
-        for (size_t const1_i = 0; const1_i < const1; const1_i++) {
+        for (const1_i = 0; const1_i < const1; const1_i++) {
           int32_t BandQsTotal = AudioGetBandQsTotal(psyScalefactor[const1_i], newNband, BandId);
           int32_t BandQsTotal_bak = BandQsTotal;
           for (size_t Nband_i = 0; Nband_i < newNband; Nband_i++) {
@@ -826,12 +813,12 @@ void LLunpack(int one_pack_size, int pack_index) {
         operator delete[](psyScalefactor);
         operator delete[](psyScalefactor_bak);
         operator delete[](inner_mem_pool3);
-        operator delete[](is_set_signed);
-        operator delete[](had_signed);
-        operator delete[](unpack_data);
       }
     }
-  }
+  }       
+  operator delete[](is_set_signed);
+  operator delete[](had_signed);
+  operator delete[](unpack_data);
   operator delete[](quantScale);
   /*
   for (size_t i = 0; i < 2; i++)
@@ -870,13 +857,14 @@ void LLunpack(int one_pack_size, int pack_index) {
   if (a9 != 1) {
     puts("a9 must equal 1");
   }
-  auto AudioDct4 = [=](int32_t* in, int32_t len, int32_t* out, int32_t* inTwParamA, int32_t* inTwParamB) {
+  auto AudioDct4 = [](int32_t* in, int32_t len, int32_t* out, int32_t* inTwParamA, int32_t* inTwParamB ,kiss_fft_cfg cfg) {
     int32_t _max_ = abs(in[0]);
     int32_t* inner_mem_block1 = new int32_t[len * 2];
     memset(inner_mem_block1, 0, 2 * len * sizeof(int32_t));
     int32_t* inner_mem_block2 = new int32_t[len * 2];
     memset(inner_mem_block2, 0, 2 * len * sizeof(int32_t));
-    for (size_t i = 0; i < len; i++) {
+    size_t i;
+    for (i = 0; i < len; i++) {
       if (abs(in[i]) > _max_) {
         _max_ = abs(in[i]);
       }
@@ -900,7 +888,7 @@ void LLunpack(int one_pack_size, int pack_index) {
       over_flowing_bits = 0;
     }
 
-    for (size_t i = 0; i < len; i++) {
+    for (i = 0; i < len; i++) {
       inner_mem_block1[i] = (in[i] >> over_flowing_bits);  // * (len >> 1);//* (len >> 1)是因为kissfft的算法问题
     }
     for (size_t i = 1, j = len - 1; i < len / 2; i += 2, j -= 2) {
@@ -908,7 +896,7 @@ void LLunpack(int one_pack_size, int pack_index) {
       inner_mem_block1[i] = inner_mem_block1[j];
       inner_mem_block1[j] = tmp;
     }
-    for (size_t i = 0; i < len; i += 2) {
+    for (i = 0; i < len; i += 2) {
       auto tmp1 = inner_mem_block1[i];
       auto tmp2 = inner_mem_block1[i + 1];
       inner_mem_block1[i] =
@@ -921,7 +909,7 @@ void LLunpack(int one_pack_size, int pack_index) {
 
     kiss_fft(cfg, (kiss_fft_cpx*)inner_mem_block1, (kiss_fft_cpx*)inner_mem_block2);
 
-    for (size_t i = 0; i < len; i += 2) {
+    for (i = 0; i < len; i += 2) {
       auto tmp1 = inner_mem_block2[i];
       auto tmp2 = inner_mem_block2[i + 1];
       out[i] = (((uint64_t)((int64_t)tmp1 * (int64_t)inTwParamA[i >> 1]) >> 31) -
@@ -931,13 +919,14 @@ void LLunpack(int one_pack_size, int pack_index) {
                     ((uint64_t)((int64_t)tmp2 * (int64_t)inTwParamA[i >> 1]) >> 31)) *
                    2;
     }
-    for (size_t i = 1, j = len - 1; i < len / 2; i += 2, j -= 2) {
+    size_t j;
+    for (i = 1, j = len - 1; i < len / 2; i += 2, j -= 2) {
       auto tmp = -out[i];
       out[i] = -out[j];
       out[j] = tmp;
     }
     int64_t normal = sqrt(0.5 / (double)len) * INT32_MAX_F;
-    for (size_t i = 0; i < len; i++) {
+    for (i = 0; i < len; i++) {
       out[i] = ((normal * out[i]) >> 31) << over_flowing_bits;
     }
     operator delete[](inner_mem_block1);
@@ -954,44 +943,45 @@ void LLunpack(int one_pack_size, int pack_index) {
     auto half_frLength = frLength >> 1;
     auto last_index = frLength - 1;
     auto ImdctOutput_chn = ImdctOutput[channels_i];
-    for (size_t i = 0; i < half_frLength; i++) {
+    size_t i;
+    for (i = 0; i < half_frLength; i++) {
       ImdctOutput_chn[half_frLength + i] = -ImdctOutput_chn[half_frLength + i];
     }
-    for (size_t i = 0; i < half_frLength; i++) {
+    for (i = 0; i < half_frLength; i++) {
       ImdctOutput_chn[i] -= (uint64_t)((int64_t)RotationTable_tan[i] * (int64_t)ImdctOutput_chn[last_index - i]) >> 31;
     }
-    for (size_t i = 0; i < half_frLength; i++) {
+    for (i = 0; i < half_frLength; i++) {
       ImdctOutput_chn[last_index - i] -= (uint64_t)((int64_t)RotationTable_sin[i] * (int64_t)ImdctOutput_chn[i]) >> 31;
     }
-    for (size_t i = 0; i < half_frLength; i++) {
+    for (i = 0; i < half_frLength; i++) {
       ImdctOutput_chn[i] -= (uint64_t)((int64_t)RotationTable_tan[i] * (int64_t)ImdctOutput_chn[last_index - i]) >> 31;
     }
 
-    AudioDct4(&ImdctOutput_chn[half_frLength], half_frLength, inner_mem_block0, _TwParamA, _TwParamB);
+    AudioDct4(&ImdctOutput_chn[half_frLength], half_frLength, inner_mem_block0, _TwParamA, _TwParamB,fft_cfg);
 
-    for (size_t i = 0; i < half_frLength; i++) {
+    for (i = 0; i < half_frLength; i++) {
       ImdctOutput_chn[i] -= (uint64_t)(0x5A827999LL * (int64_t)inner_mem_block0[i]) >> 31;
     }
-    AudioDct4(&ImdctOutput_chn[0], half_frLength, inner_mem_block0, _TwParamA, _TwParamB);
-    for (size_t i = 0; i < half_frLength; i++) { /*
+    AudioDct4(&ImdctOutput_chn[0], half_frLength, inner_mem_block0, _TwParamA, _TwParamB,fft_cfg);
+    for (i = 0; i < half_frLength; i++) { /*
        ImdctOutput_chn[half_frLength + i] -= ((uint64_t)(0x7FFFFFFFA57D8668LL * (int64_t)inner_mem_block0[i]) >> 31)
                                              << 1;*/
       ImdctOutput_chn[half_frLength + i] -= ((uint64_t)(0x7FFFFFFFA57D8668LL * (int64_t)inner_mem_block0[i]) >> 30);
     }
-    AudioDct4(&ImdctOutput_chn[half_frLength], half_frLength, inner_mem_block0, _TwParamA, _TwParamB);
-    for (size_t i = 0; i < half_frLength; i++) {
+    AudioDct4(&ImdctOutput_chn[half_frLength], half_frLength, inner_mem_block0, _TwParamA, _TwParamB ,fft_cfg);
+    for (i = 0; i < half_frLength; i++) {
       ImdctOutput_chn[i] -= (uint64_t)(0x5A827999LL * (int64_t)inner_mem_block0[i]) >> 31;
       ImdctOutput_chn[i] -= (uint64_t)(0x7FFFFFFFC0000001LL * (int64_t)ImdctOutput_chn[half_frLength + i]) >> 31;
       ImdctOutput_chn[half_frLength + i] -= ImdctOutput_chn[i];
     }
     memcpy(inner_mem_block0, ImdctOutput_chn, sizeof(int32_t) * frLength);
-    for (size_t i = 0; i < half_frLength; i++) {
+    for (i = 0; i < half_frLength; i++) {
       ImdctOutput_chn[i * 2] = inner_mem_block0[i];
       ImdctOutput_chn[i * 2 + 1] = inner_mem_block0[half_frLength + i];
     }
 
     // sub_21D20 start
-    for (size_t i = 0; i < frLength; i += 4) {
+    for (i = 0; i < frLength; i += 4) {
       auto backup1 = ImdctOutput_chn[i + 2];
       ImdctOutput_chn[i + 2] = ImdctOutput_chn[i + 3];
       ImdctOutput_chn[i + 3] = backup1;
@@ -999,7 +989,7 @@ void LLunpack(int one_pack_size, int pack_index) {
     // sub_21D20 end
     // sub_21814 end
 
-    for (size_t i = 0; i < half_frLength; i++) {
+    for (i = 0; i < half_frLength; i++) {
       auto backup1 = -ImdctOutput_chn[i];
       ImdctOutput_chn[i] = -ImdctOutput_chn[last_index - i];
       ImdctOutput_chn[last_index - i] = backup1;
@@ -1024,35 +1014,35 @@ void LLunpack(int one_pack_size, int pack_index) {
     // inner_mem_block0[intrinsic_delay];
     // sub_214B0
     {
-      for (size_t i = 0; i < half_active_length / 2; i++) {
+      for (i = 0; i < half_active_length / 2; i++) {
         auto backup1 = inner_mem_block0[half_active_length + i];
         inner_mem_block0[half_active_length + i] = inner_mem_block0[2 * half_active_length - i - 1];
         inner_mem_block0[2 * half_active_length - i - 1] = backup1;
       }
-      for (size_t i = 0; i < half_active_length * sel_FoldingParamA; i++) {
+      for (i = 0; i < half_active_length * sel_FoldingParamA; i++) {
         inner_mem_block0[i] -= (uint64_t)((int64_t)inner_mem_block0[half_active_length + i] *
                                           (int64_t)FoldingParamA[half_intrinsic_delay + i]) >>
                                31;
       }
 
-      for (size_t i = 0; i < half_active_length * sel_FoldingParamB; i++) {
+      for (i = 0; i < half_active_length * sel_FoldingParamB; i++) {
         inner_mem_block0[half_active_length + i] -=
             (uint64_t)((int64_t)inner_mem_block0[i] * (int64_t)FoldingParamB[half_intrinsic_delay + i]) >> 31;
       }
 
-      for (size_t i = 0; i < half_active_length * sel_FoldingParamC; i++) {
+      for (i = 0; i < half_active_length * sel_FoldingParamC; i++) {
         inner_mem_block0[i] -= (uint64_t)((int64_t)inner_mem_block0[half_active_length + i] *
                                           (int64_t)FoldingParamC[half_intrinsic_delay + i]) >>
                                31;
       }
 
-      for (size_t i = 0; i < half_active_length / 2; i++) {
+      for (i = 0; i < half_active_length / 2; i++) {
         auto backup1 = inner_mem_block0[half_active_length + i];
         inner_mem_block0[half_active_length + i] = inner_mem_block0[2 * half_active_length - i - 1];
         inner_mem_block0[2 * half_active_length - i - 1] = backup1;
       }
     }
-    for (size_t i = 0; i < half_active_length; i++) {  //?
+    for (i = 0; i < half_active_length; i++) {  //?
       ImdctOutput_chn[intrinsic_delay + i] = inner_mem_block0[half_active_length + i];
     }
 
@@ -1061,7 +1051,7 @@ void LLunpack(int one_pack_size, int pack_index) {
         &inner_mem_block1[half_intrinsic_delay + half_active_length],
         sizeof(int32_t) * half_active_length);
 
-    for (size_t i = 0; i < half_intrinsic_delay; i++) {
+    for (i = 0; i < half_intrinsic_delay; i++) {
       ImdctOutput_chn[i] = ImdctPrevious[channels_i][i];
     }
     memcpy(
@@ -1071,27 +1061,27 @@ void LLunpack(int one_pack_size, int pack_index) {
     memcpy(&ImdctOutput_chn[half_intrinsic_delay], inner_mem_block1, half_intrinsic_delay * sizeof(int32_t));
     // sub_214B0
     {
-      for (size_t i = 0; i < half_intrinsic_delay / 2; i++) {
+      for (i = 0; i < half_intrinsic_delay / 2; i++) {
         auto backup1 = ImdctOutput_chn[half_intrinsic_delay + i];
         ImdctOutput_chn[half_intrinsic_delay + i] = ImdctOutput_chn[2 * half_intrinsic_delay - 1 - i];
         ImdctOutput_chn[2 * half_intrinsic_delay - 1 - i] = backup1;
       }
-      for (size_t i = 0; i < half_intrinsic_delay; i++) {
+      for (i = 0; i < half_intrinsic_delay; i++) {
         ImdctOutput_chn[i] -=
             (uint64_t)((int64_t)ImdctOutput_chn[half_intrinsic_delay + i] * (int64_t)FoldingParamA[i]) >> 31;
       }
 
-      for (size_t i = 0; i < half_intrinsic_delay; i++) {
+      for (i = 0; i < half_intrinsic_delay; i++) {
         ImdctOutput_chn[half_intrinsic_delay + i] -=
             (uint64_t)((int64_t)ImdctOutput_chn[i] * (int64_t)FoldingParamB[i]) >> 31;
       }
 
-      for (size_t i = 0; i < half_intrinsic_delay; i++) {
+      for (i = 0; i < half_intrinsic_delay; i++) {
         ImdctOutput_chn[i] -=
             (uint64_t)((int64_t)ImdctOutput_chn[half_intrinsic_delay + i] * (int64_t)FoldingParamC[i]) >> 31;
       }
 
-      for (size_t i = 0; i < half_intrinsic_delay / 2; i++) {
+      for (i = 0; i < half_intrinsic_delay / 2; i++) {
         auto backup1 = ImdctOutput_chn[half_intrinsic_delay + i];
         ImdctOutput_chn[half_intrinsic_delay + i] = ImdctOutput_chn[2 * half_intrinsic_delay - 1 - i];
         ImdctOutput_chn[2 * half_intrinsic_delay - 1 - i] = backup1;
@@ -1194,7 +1184,7 @@ int main() {
   size_t i = 0;
   wave_file_out = fopen("./48kS32_tests.wav", "wb");
   memset(x, ' ', sizeof(x));
-  x[4 + 52] = 0;
+  x[5 + 52] = 0;
   int old_rate = -1;
   for (i = 0; read_count < file_size; i++) {
     fread(&one_pack_size, 1, 4, fp);
@@ -1203,11 +1193,11 @@ int main() {
 
     int rate = (int)(((double)read_count) * 100. / (double)file_size);
     if (rate != old_rate) {
-      sprintf(&x[0], "%2d", rate);
-      x[2] = '%';
-      x[3] = '[';
-      x[4 + (rate >> 1)] = '=';
-      x[4 + 51] = ']';
+      sprintf(&x[0], "%3d", rate);
+      x[3] = '%';
+      x[4] = '[';
+      x[5 + (rate >> 1)] = '=';
+      x[5 + 51] = ']';
       printf("\r%s", x);
       fflush(stdout);
       old_rate = rate;
