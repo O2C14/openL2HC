@@ -445,78 +445,78 @@ void LLunpack(int one_pack_size, int pack_index) {
   int32_t Remaining_Bits_Per_Channel = (BitTarget - i32.read_bits) / channels;
 
   int32_t read_times = 0;
-  int32_t const1 = 1;  // about channel
-  size_t const1_i;
+  int32_t read_nch = 1;  // about channel
+  size_t read_nch_i;
   size_t Nband_i;
 
   if (UsedCBR == 1 && a12 == 1 && out_channels < channels && !isInterleaveStream) {
   } else if (channels >= 1) {
-    for (size_t channels_i = 0; channels_i < channels; channels_i++) {
-      memset(is_set_signed[0], 0, sizeof(int32_t) * frLength * const1);
-      memset(had_signed[0], 0, sizeof(int32_t) * frLength * const1);
-      memset(unpack_data[0], 0, sizeof(int32_t) * frLength * const1);
+    for (size_t chi = 0; chi < channels; chi++) {
+      memset(is_set_signed[0], 0, sizeof(int32_t) * frLength * read_nch);
+      memset(had_signed[0], 0, sizeof(int32_t) * frLength * read_nch);
+      memset(unpack_data[0], 0, sizeof(int32_t) * frLength * read_nch);
       if (UsedCBR != 1)  // if not CBR
       {
         // VBR
-        // int32_t diffFlag[const1];
+        // int32_t diffFlag[read_nch];
         int32_t diffFlag[1];
 
-        for (const1_i = 0; const1_i < const1; const1_i++) {
-          diffFlag[const1_i] = ReadBitsInDWORD(&i32, 1);
+        for (read_nch_i = 0; read_nch_i < read_nch; read_nch_i++) {
+          diffFlag[read_nch_i] = ReadBitsInDWORD(&i32, 1);
         }
 
         int32_t const0 = 0;
-        for (const1_i = 0; const1_i < const1; const1_i++) {
+        for (read_nch_i = 0; read_nch_i < read_nch; read_nch_i++) {
           for (Nband_i = const0; Nband_i < Nband; Nband_i++) {
-            if (diffFlag[const1_i]) {
+            if (diffFlag[read_nch_i]) {
               if (Nband_i == 0) {
                 auto tmp_p = g_huffDecBandQs[ReadBitsInDWORD(&i32, 8)];
-                quantScale[channels_i + const1_i][Nband_i + const0] = tmp_p.data;
+                quantScale[chi + read_nch_i][Nband_i + const0] = tmp_p.data;
                 subi32(&i32, 8 - tmp_p.nbits);
               } else {
                 auto tmp_p2 = g_huffDecBandQsDiff[ReadBitsInDWORD(&i32, 7)];
-                quantScale[channels_i + const1_i][Nband_i + const0] = tmp_p2.data;
-                quantScale[channels_i + const1_i][Nband_i + const0] +=
-                    quantScale[channels_i + const1_i][Nband_i + const0 - 1] - 10;
+                quantScale[chi + read_nch_i][Nband_i + const0] = tmp_p2.data;
+                quantScale[chi + read_nch_i][Nband_i + const0] +=
+                    quantScale[chi + read_nch_i][Nband_i + const0 - 1] - 10;
                 subi32(&i32, 7 - tmp_p2.nbits);
               }
             } else {
               auto tmp_p = g_huffDecBandQs[ReadBitsInDWORD(&i32, 8)];
-              quantScale[channels_i + const1_i][Nband_i + const0] = tmp_p.data;
+              quantScale[chi + read_nch_i][Nband_i + const0] = tmp_p.data;
               subi32(&i32, 8 - tmp_p.nbits);
             }
-            printf("%d ,", quantScale[channels_i][Nband_i]);
+            printf("%d ,", quantScale[chi][Nband_i]);
           }
         }
         printf(" \n");
-        if (const1 >= 1) {
-          for (const1_i = 0; const1_i < const1; const1_i++) {
+        if (read_nch >= 1) {
+          for (read_nch_i = 0; read_nch_i < read_nch; read_nch_i++) {
             for (Nband_i = 0; Nband_i < Nband; Nband_i++) {
-              if (quantScale[const1_i + channels_i][Nband_i] > 32) {
+              if (quantScale[chi + read_nch_i][Nband_i] > 32) {
                 printf("error \n");
               }
             }
           }
         }
         for (Nband_i = 0; Nband_i < Nband; Nband_i++) {
-          for (const1_i = 0; const1_i < const1; const1_i++) {
-            if (quantScale[channels_i + const1_i][Nband_i] <= 0) {
+          for (read_nch_i = 0; read_nch_i < read_nch; read_nch_i++) {
+            if (quantScale[chi + read_nch_i][Nband_i] <= 0) {
               continue;
             }
-            if (quantScale[channels_i + const1_i][Nband_i] == 2) {
+            if (quantScale[chi + read_nch_i][Nband_i] == 2) {
               int32_t tmpBandId = BandId[Nband_i];
               while (tmpBandId < BandId[Nband_i + 1]) {
                 auto tmp_p3 = g_huffDecBandQsLayerQ2[ReadBitsInDWORD(&i32, 3)];
                 subi32(&i32, 3 - tmp_p3.nbits);
-                unpack_data[const1_i][tmpBandId] += tmp_p3.data;
+                unpack_data[read_nch_i][tmpBandId] += tmp_p3.data;
 
-                if (!is_set_signed[const1_i][tmpBandId] && tmp_p3.data >= 1) {
-                  is_set_signed[const1_i][tmpBandId] = 1;
-                  had_signed[const1_i][tmpBandId] = ReadBitsInDWORD(&i32, 1);
+                if (!is_set_signed[read_nch_i][tmpBandId] && tmp_p3.data >= 1) {
+                  is_set_signed[read_nch_i][tmpBandId] = 1;
+                  had_signed[read_nch_i][tmpBandId] = ReadBitsInDWORD(&i32, 1);
                 }
                 tmpBandId += 1;
               }
-            } else if (quantScale[channels_i + const1_i][Nband_i] == 1) {
+            } else if (quantScale[chi + read_nch_i][Nband_i] == 1) {
               int32_t tmpBandsize = BandId[Nband_i + 1] - BandId[Nband_i];
               int32_t band_size_div3 = tmpBandsize / 3;
               int32_t band_size_round3 = 3 * band_size_div3;
@@ -534,20 +534,20 @@ void LLunpack(int one_pack_size, int pack_index) {
                   int32_t huff_data_2bit_index = BandId[Nband_i] + BandIdoffset - 2;
                   subi32(&i32, 5 - tmp_p4.nbits);
 
-                  unpack_data[const1_i][huff_data_2bit_index] += huff_data_2bit;
-                  unpack_data[const1_i][huff_data_1bit_index] += huff_data_1bit;
-                  unpack_data[const1_i][huff_data_0bit_index] += huff_data_0bit;
-                  if (!is_set_signed[const1_i][huff_data_2bit_index] && huff_data_2bit != 0) {
-                    is_set_signed[const1_i][huff_data_2bit_index] = 1;
-                    had_signed[const1_i][huff_data_2bit_index] = ReadBitsInDWORD(&i32, 1);
+                  unpack_data[read_nch_i][huff_data_2bit_index] += huff_data_2bit;
+                  unpack_data[read_nch_i][huff_data_1bit_index] += huff_data_1bit;
+                  unpack_data[read_nch_i][huff_data_0bit_index] += huff_data_0bit;
+                  if (!is_set_signed[read_nch_i][huff_data_2bit_index] && huff_data_2bit != 0) {
+                    is_set_signed[read_nch_i][huff_data_2bit_index] = 1;
+                    had_signed[read_nch_i][huff_data_2bit_index] = ReadBitsInDWORD(&i32, 1);
                   }
-                  if (!is_set_signed[const1_i][huff_data_1bit_index] && huff_data_1bit != 0) {
-                    is_set_signed[const1_i][huff_data_1bit_index] = 1;
-                    had_signed[const1_i][huff_data_1bit_index] = ReadBitsInDWORD(&i32, 1);
+                  if (!is_set_signed[read_nch_i][huff_data_1bit_index] && huff_data_1bit != 0) {
+                    is_set_signed[read_nch_i][huff_data_1bit_index] = 1;
+                    had_signed[read_nch_i][huff_data_1bit_index] = ReadBitsInDWORD(&i32, 1);
                   }
-                  if (!is_set_signed[const1_i][huff_data_0bit_index] && huff_data_0bit != 0) {
-                    is_set_signed[const1_i][huff_data_0bit_index] = 1;
-                    had_signed[const1_i][huff_data_0bit_index] = ReadBitsInDWORD(&i32, 1);
+                  if (!is_set_signed[read_nch_i][huff_data_0bit_index] && huff_data_0bit != 0) {
+                    is_set_signed[read_nch_i][huff_data_0bit_index] = 1;
+                    had_signed[read_nch_i][huff_data_0bit_index] = ReadBitsInDWORD(&i32, 1);
                   }
                 }
               }
@@ -556,15 +556,15 @@ void LLunpack(int one_pack_size, int pack_index) {
                      band_size_remain3_index++) {
                   auto tmp_p5 = ReadBitsInDWORD(&i32, 1);
                   auto tmp_index = band_size_round3 + band_size_remain3_index + BandId[Nband_i];
-                  unpack_data[const1_i][tmp_index] += tmp_p5;
-                  if (!is_set_signed[const1_i][tmp_index] && tmp_p5 >= 1) {
-                    had_signed[const1_i][tmp_index] = ReadBitsInDWORD(&i32, 1);
-                    is_set_signed[const1_i][tmp_index] = 1;
+                  unpack_data[read_nch_i][tmp_index] += tmp_p5;
+                  if (!is_set_signed[read_nch_i][tmp_index] && tmp_p5 >= 1) {
+                    had_signed[read_nch_i][tmp_index] = ReadBitsInDWORD(&i32, 1);
+                    is_set_signed[read_nch_i][tmp_index] = 1;
                   }
                 }
               }
-            } else if (quantScale[channels_i + const1_i][Nband_i] >= 3) {
-              int32_t need_read = quantScale[channels_i + const1_i][Nband_i] - 3;
+            } else if (quantScale[chi + read_nch_i][Nband_i] >= 3) {
+              int32_t need_read = quantScale[chi + read_nch_i][Nband_i] - 3;
               int32_t tmpBandId = BandId[Nband_i];
 
               while (tmpBandId < BandId[Nband_i + 1]) {
@@ -572,36 +572,36 @@ void LLunpack(int one_pack_size, int pack_index) {
                 subi32(&i32, 5 - tmp_p6.nbits);
                 auto tmp_data = tmp_p6.data << need_read;
                 read_times += 1;
-                if (quantScale[channels_i + const1_i][Nband_i] >= 4) {
+                if (quantScale[chi + read_nch_i][Nband_i] >= 4) {
                   tmp_data += ReadBitsInDWORD(&i32, need_read);
                 }
-                unpack_data[const1_i][tmpBandId] += tmp_data;
-                if (!is_set_signed[const1_i][tmpBandId] && tmp_data >= 1) {
-                  had_signed[const1_i][tmpBandId] = ReadBitsInDWORD(&i32, 1);
-                  is_set_signed[const1_i][tmpBandId] = 1;
+                unpack_data[read_nch_i][tmpBandId] += tmp_data;
+                if (!is_set_signed[read_nch_i][tmpBandId] && tmp_data >= 1) {
+                  had_signed[read_nch_i][tmpBandId] = ReadBitsInDWORD(&i32, 1);
+                  is_set_signed[read_nch_i][tmpBandId] = 1;
                 }
                 tmpBandId += 1;
               }
             }
           }
         }
-        for (const1_i = 0; const1_i < const1; const1_i++) {
+        for (read_nch_i = 0; read_nch_i < read_nch; read_nch_i++) {
           for (size_t frLength_index = 0; frLength_index < frLength; frLength_index++) {
-            if (had_signed[const1_i][frLength_index] > 0) {
-              unpack_data[const1_i][frLength_index] = -unpack_data[const1_i][frLength_index];
+            if (had_signed[read_nch_i][frLength_index] > 0) {
+              unpack_data[read_nch_i][frLength_index] = -unpack_data[read_nch_i][frLength_index];
             }
           }
-          memcpy(DataFromStream[const1_i + channels_i], unpack_data[const1_i], frLength * sizeof(int32_t));
+          memcpy(DataFromStream[chi + read_nch_i], unpack_data[read_nch_i], frLength * sizeof(int32_t));
         }
       } else {
         // CBR
-        // int32_t diffFlag[const1];
+        // int32_t diffFlag[read_nch];
         int32_t already_Readbits = i32.read_bits;
         int32_t diffFlag[1];
-        for (const1_i = 0; const1_i < const1; const1_i++) {
-          diffFlag[const1_i] = ReadBitsInDWORD(&i32, 1);
+        for (read_nch_i = 0; read_nch_i < read_nch; read_nch_i++) {
+          diffFlag[read_nch_i] = ReadBitsInDWORD(&i32, 1);
         }
-        auto tmp_f1 = fmin(fmax(sqrt((double)Remaining_Bits_Per_Channel / (double)(frLength * const1)), 0.2), 1.0);
+        auto tmp_f1 = fmin(fmax(sqrt((double)Remaining_Bits_Per_Channel / (double)(frLength * read_nch)), 0.2), 1.0);
         int32_t newNband = 0;
         int32_t pre_val = BandId[0], next_val = 0;
         for (newNband = 0; newNband < Nband; newNband++) {
@@ -621,43 +621,43 @@ void LLunpack(int one_pack_size, int pack_index) {
         }
 
         int32_t const0 = 0;
-        for (const1_i = 0; const1_i < const1; const1_i++) {
+        for (read_nch_i = 0; read_nch_i < read_nch; read_nch_i++) {
           for (Nband_i = const0; Nband_i < newNband; Nband_i++) {
-            if (diffFlag[const1_i]) {
+            if (diffFlag[read_nch_i]) {
               if (Nband_i == 0) {
                 auto tmp_p = g_huffDecBandQs[ReadBitsInDWORD(&i32, 8)];
-                quantScale[channels_i + const1_i][Nband_i + const0] = tmp_p.data;
+                quantScale[chi + read_nch_i][Nband_i + const0] = tmp_p.data;
                 subi32(&i32, 8 - tmp_p.nbits);
               } else {
                 auto tmp_p2 = g_huffDecBandQsDiff[ReadBitsInDWORD(&i32, 7)];
-                quantScale[channels_i + const1_i][Nband_i + const0] = tmp_p2.data;
-                quantScale[channels_i + const1_i][Nband_i + const0] +=
-                    quantScale[channels_i + const1_i][Nband_i + const0 - 1] - 10;
+                quantScale[chi + read_nch_i][Nband_i + const0] = tmp_p2.data;
+                quantScale[chi + read_nch_i][Nband_i + const0] +=
+                    quantScale[chi + read_nch_i][Nband_i + const0 - 1] - 10;
                 subi32(&i32, 7 - tmp_p2.nbits);
               }
             } else {
               auto tmp_p = g_huffDecBandQs[ReadBitsInDWORD(&i32, 8)];
-              quantScale[channels_i + const1_i][Nband_i + const0] = tmp_p.data;
+              quantScale[chi + read_nch_i][Nband_i + const0] = tmp_p.data;
               subi32(&i32, 8 - tmp_p.nbits);
             }
           }
         }
-        for (const1_i = 0; const1_i < const1; const1_i++) {
+        for (read_nch_i = 0; read_nch_i < read_nch; read_nch_i++) {
           for (Nband_i = 0; Nband_i < newNband; Nband_i++) {
-            if (quantScale[const1_i + channels_i][Nband_i] > 32) {
+            if (quantScale[chi + read_nch_i][Nband_i] > 32) {
               printf("error \n");
             }
           }
         }
 
         int32_t(*psyScalefactor)[Nband];
-        *(int32_t**)&psyScalefactor = new int32_t[const1 * Nband];
+        *(int32_t**)&psyScalefactor = new int32_t[read_nch * Nband];
         int32_t(*psyScalefactor_bak)[Nband];
-        *(int32_t**)&psyScalefactor_bak = new int32_t[const1 * Nband];
+        *(int32_t**)&psyScalefactor_bak = new int32_t[read_nch * Nband];
 
-        memcpy(psyScalefactor_bak, quantScale[channels_i], sizeof(int32_t) * Nband * const1);
-        memcpy(psyScalefactor, quantScale[channels_i], sizeof(int32_t) * Nband * const1);
-        memset(quantScale[channels_i], 0, sizeof(int32_t) * Nband * const1);
+        memcpy(psyScalefactor_bak, quantScale[chi], sizeof(int32_t) * Nband * read_nch);
+        memcpy(psyScalefactor, quantScale[chi], sizeof(int32_t) * Nband * read_nch);
+        memset(quantScale[chi], 0, sizeof(int32_t) * Nband * read_nch);
         auto AudioBandPsyAcoustic = [](int* p_psyScalefactor, int nband, int x, int* out) {
           int max = p_psyScalefactor[0];
           for (size_t i = 0; i < nband; i++) {
@@ -683,7 +683,7 @@ void LLunpack(int one_pack_size, int pack_index) {
           return 1;
         };
         int32_t(*inner_mem_pool3)[Nband];
-        *(int32_t**)&inner_mem_pool3 = new int32_t[const1 * Nband];
+        *(int32_t**)&inner_mem_pool3 = new int32_t[read_nch * Nband];
         int continue_flag = 0;
         int loop_index = 0;
 
@@ -693,33 +693,33 @@ void LLunpack(int one_pack_size, int pack_index) {
             x1 = 1;
           }
           continue_flag = 0;
-          for (const1_i = 0; const1_i < const1; const1_i++) {
-            continue_flag |= AudioBandPsyAcoustic(psyScalefactor[const1_i], Nband, x1, inner_mem_pool3[const1_i]);
+          for (read_nch_i = 0; read_nch_i < read_nch; read_nch_i++) {
+            continue_flag |= AudioBandPsyAcoustic(psyScalefactor[read_nch_i], Nband, x1, inner_mem_pool3[read_nch_i]);
 
             for (Nband_i = 0; Nband_i < newNband; Nband_i++) {
-              psyScalefactor[const1_i][Nband_i] -= inner_mem_pool3[const1_i][Nband_i];
-              quantScale[const1_i + channels_i][Nband_i] =
-                  psyScalefactor_bak[const1_i][Nband_i] - psyScalefactor[const1_i][Nband_i];
+              psyScalefactor[read_nch_i][Nband_i] -= inner_mem_pool3[read_nch_i][Nband_i];
+              quantScale[chi + read_nch_i][Nband_i] =
+                  psyScalefactor_bak[read_nch_i][Nband_i] - psyScalefactor[read_nch_i][Nband_i];
             }
           }
           // AudioEstimateBitCount
           int EstimateBitCount = 0;
-          for (const1_i = 0; const1_i < const1; const1_i++) {
+          for (read_nch_i = 0; read_nch_i < read_nch; read_nch_i++) {
             for (Nband_i = 0; Nband_i < newNband; Nband_i++) {
               EstimateBitCount +=
-                  (BandId[Nband_i + 1] - BandId[Nband_i]) * (quantScale[const1_i + channels_i][Nband_i] + 2);
+                  (BandId[Nband_i + 1] - BandId[Nband_i]) * (quantScale[chi + read_nch_i][Nband_i] + 2);
             }
           }
 
           if ((EstimateBitCount >= (Remaining_Bits_Per_Channel + already_Readbits - i32.read_bits)) || !continue_flag) {
             for (Nband_i = 0; Nband_i < newNband; Nband_i++) {
               print_times += 1;
-              for (const1_i = 0; const1_i < const1; const1_i++) {
-                auto NoiseFloorScale = psyScalefactor[const1_i][Nband_i];
-                if (quantScale[channels_i + const1_i][Nband_i] <= 0) {
+              for (read_nch_i = 0; read_nch_i < read_nch; read_nch_i++) {
+                auto NoiseFloorScale = psyScalefactor[read_nch_i][Nband_i];
+                if (quantScale[chi + read_nch_i][Nband_i] <= 0) {
                   continue;
                 }
-                if (quantScale[channels_i + const1_i][Nband_i] == 2) {
+                if (quantScale[chi + read_nch_i][Nband_i] == 2) {
                   int32_t tmpBandId = BandId[Nband_i];
                   while (tmpBandId < BandId[Nband_i + 1]) {
                     if (i32.read_bits >= (Remaining_Bits_Per_Channel + already_Readbits - 12)) {
@@ -729,15 +729,15 @@ void LLunpack(int one_pack_size, int pack_index) {
                     }
                     auto tmp_p3 = g_huffDecBandQsLayerQ2[ReadBitsInDWORD(&i32, 3)];
                     subi32(&i32, 3 - tmp_p3.nbits);
-                    unpack_data[const1_i][tmpBandId] += (tmp_p3.data << NoiseFloorScale);
+                    unpack_data[read_nch_i][tmpBandId] += (tmp_p3.data << NoiseFloorScale);
 
-                    if (!is_set_signed[const1_i][tmpBandId] && tmp_p3.data >= 1) {
-                      is_set_signed[const1_i][tmpBandId] = 1;
-                      had_signed[const1_i][tmpBandId] = ReadBitsInDWORD(&i32, 1);
+                    if (!is_set_signed[read_nch_i][tmpBandId] && tmp_p3.data >= 1) {
+                      is_set_signed[read_nch_i][tmpBandId] = 1;
+                      had_signed[read_nch_i][tmpBandId] = ReadBitsInDWORD(&i32, 1);
                     }
                     tmpBandId += 1;
                   }
-                } else if (quantScale[channels_i + const1_i][Nband_i] == 1) {
+                } else if (quantScale[chi + read_nch_i][Nband_i] == 1) {
                   int32_t tmpBandsize = BandId[Nband_i + 1] - BandId[Nband_i];
                   int32_t band_size_div3 = tmpBandsize / 3;
                   int32_t band_size_round3 = 3 * band_size_div3;
@@ -760,20 +760,20 @@ void LLunpack(int one_pack_size, int pack_index) {
                       int32_t huff_data_2bit_index = BandId[Nband_i] + BandIdoffset - 2;
                       subi32(&i32, 5 - tmp_p4.nbits);
 
-                      unpack_data[const1_i][huff_data_2bit_index] += huff_data_2bit;
-                      unpack_data[const1_i][huff_data_1bit_index] += huff_data_1bit;
-                      unpack_data[const1_i][huff_data_0bit_index] += huff_data_0bit;
-                      if (!is_set_signed[const1_i][huff_data_2bit_index] && huff_data_2bit != 0) {
-                        is_set_signed[const1_i][huff_data_2bit_index] = 1;
-                        had_signed[const1_i][huff_data_2bit_index] = ReadBitsInDWORD(&i32, 1);
+                      unpack_data[read_nch_i][huff_data_2bit_index] += huff_data_2bit;
+                      unpack_data[read_nch_i][huff_data_1bit_index] += huff_data_1bit;
+                      unpack_data[read_nch_i][huff_data_0bit_index] += huff_data_0bit;
+                      if (!is_set_signed[read_nch_i][huff_data_2bit_index] && huff_data_2bit != 0) {
+                        is_set_signed[read_nch_i][huff_data_2bit_index] = 1;
+                        had_signed[read_nch_i][huff_data_2bit_index] = ReadBitsInDWORD(&i32, 1);
                       }
-                      if (!is_set_signed[const1_i][huff_data_1bit_index] && huff_data_1bit != 0) {
-                        is_set_signed[const1_i][huff_data_1bit_index] = 1;
-                        had_signed[const1_i][huff_data_1bit_index] = ReadBitsInDWORD(&i32, 1);
+                      if (!is_set_signed[read_nch_i][huff_data_1bit_index] && huff_data_1bit != 0) {
+                        is_set_signed[read_nch_i][huff_data_1bit_index] = 1;
+                        had_signed[read_nch_i][huff_data_1bit_index] = ReadBitsInDWORD(&i32, 1);
                       }
-                      if (!is_set_signed[const1_i][huff_data_0bit_index] && huff_data_0bit != 0) {
-                        is_set_signed[const1_i][huff_data_0bit_index] = 1;
-                        had_signed[const1_i][huff_data_0bit_index] = ReadBitsInDWORD(&i32, 1);
+                      if (!is_set_signed[read_nch_i][huff_data_0bit_index] && huff_data_0bit != 0) {
+                        is_set_signed[read_nch_i][huff_data_0bit_index] = 1;
+                        had_signed[read_nch_i][huff_data_0bit_index] = ReadBitsInDWORD(&i32, 1);
                       }
                     }
                   }
@@ -787,15 +787,15 @@ void LLunpack(int one_pack_size, int pack_index) {
                       }
                       auto tmp_p5 = ReadBitsInDWORD(&i32, 1) << NoiseFloorScale;
                       auto tmp_index = band_size_round3 + band_size_remain3_index + BandId[Nband_i];
-                      unpack_data[const1_i][tmp_index] += tmp_p5;
-                      if (!is_set_signed[const1_i][tmp_index] && tmp_p5 >= 1) {
-                        had_signed[const1_i][tmp_index] = ReadBitsInDWORD(&i32, 1);
-                        is_set_signed[const1_i][tmp_index] = 1;
+                      unpack_data[read_nch_i][tmp_index] += tmp_p5;
+                      if (!is_set_signed[read_nch_i][tmp_index] && tmp_p5 >= 1) {
+                        had_signed[read_nch_i][tmp_index] = ReadBitsInDWORD(&i32, 1);
+                        is_set_signed[read_nch_i][tmp_index] = 1;
                       }
                     }
                   }
-                } else if (quantScale[channels_i + const1_i][Nband_i] >= 3) {
-                  int32_t need_read = quantScale[channels_i + const1_i][Nband_i] - 3;
+                } else if (quantScale[chi + read_nch_i][Nband_i] >= 3) {
+                  int32_t need_read = quantScale[chi + read_nch_i][Nband_i] - 3;
                   int32_t tmpBandId = BandId[Nband_i];
 
                   while (tmpBandId < BandId[Nband_i + 1]) {
@@ -808,20 +808,20 @@ void LLunpack(int one_pack_size, int pack_index) {
                     subi32(&i32, 5 - tmp_p6.nbits);
                     auto tmp_data = tmp_p6.data << need_read;
                     read_times += 1;
-                    if (quantScale[channels_i + const1_i][Nband_i] >= 4) {
+                    if (quantScale[chi + read_nch_i][Nband_i] >= 4) {
                       tmp_data += ReadBitsInDWORD(&i32, need_read);
                     }
-                    unpack_data[const1_i][tmpBandId] += tmp_data << NoiseFloorScale;
-                    if (!is_set_signed[const1_i][tmpBandId] && tmp_data >= 1) {
-                      had_signed[const1_i][tmpBandId] = ReadBitsInDWORD(&i32, 1);
-                      is_set_signed[const1_i][tmpBandId] = 1;
+                    unpack_data[read_nch_i][tmpBandId] += tmp_data << NoiseFloorScale;
+                    if (!is_set_signed[read_nch_i][tmpBandId] && tmp_data >= 1) {
+                      had_signed[read_nch_i][tmpBandId] = ReadBitsInDWORD(&i32, 1);
+                      is_set_signed[read_nch_i][tmpBandId] = 1;
                     }
                     tmpBandId += 1;
                   }
                 }
               }
             }
-            memcpy(psyScalefactor_bak, psyScalefactor, sizeof(int32_t) * Nband * const1);
+            memcpy(psyScalefactor_bak, psyScalefactor, sizeof(int32_t) * Nband * read_nch);
           } else {
             if ((EstimateBitCount >= (Remaining_Bits_Per_Channel + already_Readbits - i32.read_bits))) {
               continue_flag = 0;
@@ -844,46 +844,46 @@ void LLunpack(int one_pack_size, int pack_index) {
           // printf("\n");
           return res;
         };
-        for (const1_i = 0; const1_i < const1; const1_i++) {
-          int32_t BandQsTotal = AudioGetBandQsTotal(psyScalefactor[const1_i], newNband, BandId);
+        for (read_nch_i = 0; read_nch_i < read_nch; read_nch_i++) {
+          int32_t BandQsTotal = AudioGetBandQsTotal(psyScalefactor[read_nch_i], newNband, BandId);
           int32_t BandQsTotal_bak = BandQsTotal;
           for (Nband_i = 0; Nband_i < newNband; Nband_i++) {
-            auto pSf = psyScalefactor[const1_i][Nband_i];
+            auto pSf = psyScalefactor[read_nch_i][Nband_i];
             if (pSf <= 1) pSf = 0;
             if (pSf != 0 && Nband_i < (newNband >> 1)) {
               pSf -= 1;
             }
             for (size_t j = BandId[Nband_i]; j < BandId[Nband_i + 1]; j++) {
-              auto t114 = unpack_data[const1_i][j];
+              auto t114 = unpack_data[read_nch_i][j];
               if (t114 >= 1) {
                 BandQsTotal = (int16_t)(0x7C4D * BandQsTotal + 0x3619);
                 auto tmp_mask = (~(0xffffffff << pSf));
                 auto gain = (0x7FFF * BandQsTotal) & tmp_mask;
-                unpack_data[const1_i][j] += gain;
+                unpack_data[read_nch_i][j] += gain;
               }
             }
           }
           if (a13 == 1) {
             for (Nband_i = 0; Nband_i < newNband; Nband_i++) {
-              auto pSf = psyScalefactor[const1_i][Nband_i] - 3;
+              auto pSf = psyScalefactor[read_nch_i][Nband_i] - 3;
               if (pSf <= 0) {
                 continue;
               }
               for (size_t j = BandId[Nband_i]; j < BandId[Nband_i + 1]; j++) {
                 BandQsTotal_bak = (int16_t)(0x7C4D * BandQsTotal_bak + 0x3619);
-                if (!unpack_data[const1_i][j]) {
-                  unpack_data[const1_i][j] = ~(-1 << pSf);
-                  had_signed[const1_i][j] = BandQsTotal_bak < 0x8000;
+                if (!unpack_data[read_nch_i][j]) {
+                  unpack_data[read_nch_i][j] = ~(-1 << pSf);
+                  had_signed[read_nch_i][j] = BandQsTotal_bak < 0x8000;
                 }
               }
             }
           }
           for (size_t frLength_index = 0; frLength_index < frLength; frLength_index++) {
-            if (had_signed[const1_i][frLength_index] > 0) {
-              unpack_data[const1_i][frLength_index] = -unpack_data[const1_i][frLength_index];
+            if (had_signed[read_nch_i][frLength_index] > 0) {
+              unpack_data[read_nch_i][frLength_index] = -unpack_data[read_nch_i][frLength_index];
             }
           }
-          memcpy(DataFromStream[const1_i + channels_i], unpack_data[const1_i], frLength * sizeof(int32_t));
+          memcpy(DataFromStream[chi + read_nch_i], unpack_data[read_nch_i], frLength * sizeof(int32_t));
         }
         operator delete[](psyScalefactor);
         operator delete[](psyScalefactor_bak);
@@ -1005,11 +1005,11 @@ void LLunpack(int one_pack_size, int pack_index) {
   memcpy(ImdctOutput[1], DataFromStream[1], sizeof(int32_t) * frLength);
   // decode per channel
   // sub_21814 start
-  for (size_t channels_i = 0; channels_i < channels; channels_i++) {
+  for (size_t chi = 0; chi < channels; chi++) {
     memset(mdct_block1, 0, sizeof(int32_t) * 2 * frLength);
     auto half_frLength = frLength >> 1;
     auto last_index = frLength - 1;
-    auto ImdctOutput_chn = ImdctOutput[channels_i];
+    auto ImdctOutput_chn = ImdctOutput[chi];
     size_t i;
     for (i = 0; i < half_frLength; i++) {
       ImdctOutput_chn[half_frLength + i] = -ImdctOutput_chn[half_frLength + i];
@@ -1068,10 +1068,10 @@ void LLunpack(int one_pack_size, int pack_index) {
     // memset(mdct_block2, 0, sizeof(int32_t) * frLength);
     int32_t half_intrinsic_delay = intrinsic_delay >> 1;
     memcpy(mdct_block2, ImdctOutput_chn, sizeof(int32_t) * frLength);
-    memcpy(mdct_block1, &ImdctPrevious[channels_i][half_intrinsic_delay], sizeof(int32_t) * half_active_length);
+    memcpy(mdct_block1, &ImdctPrevious[chi][half_intrinsic_delay], sizeof(int32_t) * half_active_length);
     memcpy(&mdct_block1[half_active_length], &mdct_block2[half_intrinsic_delay], sizeof(int32_t) * half_active_length);
     memcpy(
-        &ImdctPrevious[channels_i][half_intrinsic_delay],
+        &ImdctPrevious[chi][half_intrinsic_delay],
         &mdct_block2[half_intrinsic_delay + half_active_length],
         sizeof(int32_t) * half_active_length);
 
@@ -1115,10 +1115,10 @@ void LLunpack(int one_pack_size, int pack_index) {
         sizeof(int32_t) * half_active_length);
 
     for (i = 0; i < half_intrinsic_delay; i++) {
-      ImdctOutput_chn[i] = ImdctPrevious[channels_i][i];
+      ImdctOutput_chn[i] = ImdctPrevious[chi][i];
     }
     memcpy(
-        ImdctPrevious[channels_i],
+        ImdctPrevious[chi],
         &mdct_block2[frLength - half_intrinsic_delay],
         half_intrinsic_delay * sizeof(int32_t));
     memcpy(&ImdctOutput_chn[half_intrinsic_delay], mdct_block2, half_intrinsic_delay * sizeof(int32_t));
