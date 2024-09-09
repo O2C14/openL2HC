@@ -34,7 +34,7 @@ typedef struct {
   uint32_t* stream_buffer;        // 0
   int32_t index_in_stream;        // 20
   int32_t index_in_DWORD;         // 24
-  int32_t stream_buffer_size_x8;  // 28
+  int32_t total_bits;  // 28
   int32_t read_bits;              // 32
 } read_index2;
 FILE* bit_record = NULL;
@@ -43,8 +43,8 @@ uint64_t ReadBitsInDWORD(read_index2* i32, int nbits) {
   if (!nbits) {
     return result;
   }
-  if ((i32->stream_buffer_size_x8) < (i32->read_bits + nbits)) {
-    //puts("bits is not enough");
+  if ((i32->total_bits) < (i32->read_bits + nbits)) {
+    // puts("bits is not enough");
     return 0;
   }
 
@@ -116,47 +116,82 @@ void AudioGetBandId(int32* a1, int Nband, int frLength, double a4) {
   a1[Nband] = frLength;
 }
 
-int32_t g_mdctHraWindow[1920];
+int32_t* g_mdctHraWindow = NULL;
+int32_t* RotationTable_sin = NULL;
+int32_t* RotationTable_tan = NULL;
+int32_t* FoldingParamA = NULL;
+int32_t* FoldingParamB = NULL;
+int32_t* FoldingParamC = NULL;
+int32_t* _TwParamA = NULL;
+int32_t* _TwParamB = NULL;
+int32_t* _TwParamC = NULL;
+int32_t* _TwParamD = NULL;
 
-int32_t RotationTable_sin[480];
-int32_t RotationTable_tan[480];
+int32_t* ImdctPrevious[2];
 
-int32_t FoldingParamA[480];
-int32_t FoldingParamB[480];
-int32_t FoldingParamC[480];
+int32_t* is_set_signed[1];  // 符号位是否已赋值
+int32_t* had_signed[1];     // 符号位
+int32_t* unpack_data[1];    // 数据
 
-int32_t _TwParamA[240];
-int32_t _TwParamB[240];
-int32_t _TwParamC[480];
-int32_t _TwParamD[480];
+int32_t* ImdctOutput[2];
+int32_t* DataFromStream[2];
+
+int32_t* fft_block1 = NULL;
+int32_t* fft_block2 = NULL;
+int32_t* mdct_block1 = NULL;
+int32_t* mdct_block2 = NULL;
+// int32_t (*quantScale)[0];
 
 FILE* wave_file_out = NULL;
 int32_t wave_pcm_buf[2 * 960];
+
+int32_t BandId[64];
+
+int32_t old_frLength = 0;
+int32_t old_band_split_scale = 0;
+kiss_fft_cfg fft_cfg = NULL;
+int32_t print_times = 0;
 
 void LLinit(int32_t frLength, int32_t intrinsic_delay) {
   int32_t half_intrinsic_delay = intrinsic_delay >> 1;
   int32_t half_frLength = frLength >> 1;
   int32_t half_active_length = (frLength - intrinsic_delay) >> 1;
   size_t i;
+
   if (frLength == 480 && intrinsic_delay == 120) {
+    g_mdctHraWindow = (int32_t*)malloc(960 * sizeof(int32_t));
     for (i = 0; i < 960; i++) {
       g_mdctHraWindow[i] = 2 * g_mdctHraWindow480With10MsQ30[i];
     }
 
   } else if (frLength == 960 || intrinsic_delay == 240) {
+    g_mdctHraWindow = (int32_t*)malloc(1920 * sizeof(int32_t));
     for (i = 0; i < 1920; i++) {
       g_mdctHraWindow[i] = 2 * g_mdctHraWindow960With10MsQ30[i];
     }
   } else {
     return;
   }
+  if (g_mdctHraWindow == NULL) {
+    return;
+  }
+  fft_cfg = kiss_fft_alloc(frLength / 4, false, 0, 0);
+  ImdctPrevious[0] = (int32_t*)malloc(frLength * sizeof(int32_t));
+  ImdctPrevious[1] = (int32_t*)malloc(frLength * sizeof(int32_t));
+  memset(ImdctPrevious[0], 0, frLength * sizeof(int32_t));
+  memset(ImdctPrevious[1], 0, frLength * sizeof(int32_t));
+
+  RotationTable_sin = (int32_t*)malloc(half_frLength * sizeof(int32_t));
+  RotationTable_tan = (int32_t*)malloc(half_frLength * sizeof(int32_t));
   for (i = 0; i < half_frLength; i++) {
     auto tmp_sin = sin((double)(i * 2 + 1) * M_PI / (double)(4 * frLength));
     RotationTable_sin[i] = (tmp_sin * INT32_MAX_F);
     auto tmp_cos = cos((double)(i * 2 + 1) * M_PI / (double)(4 * frLength));
     RotationTable_tan[i] = ((tmp_cos + -1.0) / tmp_sin * INT32_MAX_F);
   }
-
+  FoldingParamA = (int32_t*)malloc(half_frLength * sizeof(int32_t));
+  FoldingParamB = (int32_t*)malloc(half_frLength * sizeof(int32_t));
+  FoldingParamC = (int32_t*)malloc(half_frLength * sizeof(int32_t));
   for (i = 0; i < half_intrinsic_delay; i++) {
     FoldingParamB[i] = -g_mdctHraWindow[half_frLength - half_intrinsic_delay + i];
   }
@@ -207,6 +242,10 @@ void LLinit(int32_t frLength, int32_t intrinsic_delay) {
       FoldingParamC[half_intrinsic_delay + i] = 0x7FFFFFFF;
     }
   }
+  _TwParamA = (int32_t*)malloc(frLength / 4 * sizeof(int32_t));
+  _TwParamB = (int32_t*)malloc(frLength / 4 * sizeof(int32_t));
+  _TwParamC = (int32_t*)malloc(frLength / 2 * sizeof(int32_t));
+  _TwParamD = (int32_t*)malloc(frLength / 2 * sizeof(int32_t));
   for (i = 0; i < frLength / 4; i++) {
     _TwParamA[i] = cos((double)(i * 8 + 1) * -M_PI / (double)(frLength * 4)) * INT32_MAX_F;
   }
@@ -221,16 +260,86 @@ void LLinit(int32_t frLength, int32_t intrinsic_delay) {
   for (i = 0; i < frLength / 2; i++) {
     _TwParamD[i] = sin((double)(i * 8 + 1) * -M_PI / (double)(frLength * 4)) * INT32_MAX_F;
   }
+  /**/
+  int test_mem = 4;
+  is_set_signed[0] = (int32_t*)malloc(frLength * sizeof(int32_t));
+  had_signed[0] = (int32_t*)malloc(frLength * sizeof(int32_t));
+  unpack_data[0] = (int32_t*)malloc(frLength * sizeof(int32_t));
+  ImdctOutput[0] = (int32_t*)malloc(frLength * sizeof(int32_t));
+  ImdctOutput[1] = (int32_t*)malloc(frLength * sizeof(int32_t));
+  DataFromStream[0] = (int32_t*)malloc(frLength * sizeof(int32_t));
+  DataFromStream[1] = (int32_t*)malloc(frLength * sizeof(int32_t));
+
+  fft_block1 = (int32_t*)malloc(frLength * sizeof(int32_t));
+  fft_block2 = (int32_t*)malloc(frLength * sizeof(int32_t));
+  mdct_block1 = (int32_t*)malloc(2 * frLength * sizeof(int32_t));
+  mdct_block2 = (int32_t*)malloc(2 * frLength * sizeof(int32_t));
+}
+void LLdeinit() {
+  if (g_mdctHraWindow == NULL) {
+    return;
+  }
+  kiss_fft_free(fft_cfg);
+  free(g_mdctHraWindow);
+  free(RotationTable_sin);
+  free(RotationTable_tan);
+  free(FoldingParamA);
+  free(FoldingParamB);
+  free(FoldingParamC);
+  free(_TwParamA);
+  free(_TwParamB);
+  free(_TwParamC);
+  free(_TwParamD);
+
+  free(ImdctPrevious[0]);
+  free(ImdctPrevious[1]);
+
+  free(is_set_signed[0]);
+  free(had_signed[0]);
+  free(unpack_data[0]);
+
+  free(ImdctOutput[0]);
+  free(ImdctOutput[1]);
+  free(DataFromStream[0]);
+  free(DataFromStream[1]);
+  free(fft_block1);
+  free(fft_block2);
+  free(mdct_block1);
+  free(mdct_block2);
+  fft_cfg = NULL;
+  g_mdctHraWindow = NULL;
+
+  RotationTable_sin = NULL;
+  RotationTable_tan = NULL;
+
+  FoldingParamA = NULL;
+  FoldingParamB = NULL;
+  FoldingParamC = NULL;
+
+  _TwParamA = NULL;
+  _TwParamB = NULL;
+  _TwParamC = NULL;
+  _TwParamD = NULL;
+
+  ImdctPrevious[0] = NULL;
+  ImdctPrevious[1] = NULL;
+  
+  is_set_signed[0] = NULL;
+  had_signed[0] = NULL;
+  unpack_data[0] = NULL;
+
+  ImdctOutput[0] = NULL;
+  ImdctOutput[1] = NULL;
+  DataFromStream[0] = NULL;
+  DataFromStream[1] = NULL;
+  
+  fft_block1 = NULL;
+  fft_block2 = NULL;
+  mdct_block1 = NULL;
+  mdct_block2 = NULL;
 }
 
-int32_t BandId[64];
-
-int32_t ImdctPrevious[2][960];
-int32_t old_frLength = 0;
-int32_t old_band_split_scale = 0;
-kiss_fft_cfg fft_cfg;
-int32_t print_times = 0;
-void AudioWaveOutputFromInt24(int32_t* in, int32_t frLength, int32_t channels, int bitPerSample, void* pcm_out);
+void AudioWaveOutputFromInt24(int32_t** in, int32_t frLength, int32_t channels, int bitPerSample, void* pcm_out);
 void LLunpack(int one_pack_size, int pack_index) {
   uint32_t* stream_buffer_s32 = (uint32_t*)stream_buffer;
   AudioBitstreamRearrangeByte(stream_buffer_s32, one_pack_size);
@@ -239,7 +348,7 @@ void LLunpack(int one_pack_size, int pack_index) {
       .stream_buffer = stream_buffer_s32,
       .index_in_stream = 0,
       .index_in_DWORD = 0,
-      .stream_buffer_size_x8 = one_pack_size * 8,
+      .total_bits = one_pack_size * 8,
       .read_bits = 0};
 
   int32_t codectype = 0;                   // 0 0
@@ -263,31 +372,14 @@ void LLunpack(int one_pack_size, int pack_index) {
   int32_t UsedInt16;           // 60
   int32_t Nband = 0;
   codectype = ReadBitsInDWORD(&i32, 2);
-  // printf("codectype %d\n", codectype);
-  smpRate2 = ReadBitsInDWORD(&i32, 2);
-  smpRate2 = smpRate_table[smpRate2];
-  // printf("%d\n", smpRate2);
-
+  smpRate2 = smpRate_table[ReadBitsInDWORD(&i32, 2)];
   Nband = sqrt((double)smpRate2 / 50.0);
-
-  channels = ReadBitsInDWORD(&i32, 1);
-  channels += 1;
-  // printf("%d\n", channels);
-
-  frLength = ReadBitsInDWORD(&i32, 2);
-  frLength = frLength_table[frLength];
-  // AudioGetRotationParam(RotationTable_sin, RotationTable_tan, frLength);
-  //  printf("%d\n", frLength);
-  // AudioDct4GetTwParam(_TwParamA, _TwParamB, _TwParamC, _TwParamD, frLength);
-
+  channels = ReadBitsInDWORD(&i32, 1) + 1;
+  frLength = frLength_table[ReadBitsInDWORD(&i32, 2)];
   stream_bitrate = ReadBitsInDWORD(&i32, 15);
-  // printf("%d\n", stream_bitrate);
   ext_cfg = ReadBitsInDWORD(&i32, 1);
-  // printf("%d\n", ext_cfg);
   UsedInt16 = ReadBitsInDWORD(&i32, 1);
-  // printf("%ld\n", UsedInt16);
   isInterleaveStream = ReadBitsInDWORD(&i32, 1);
-  // printf("%ld\n", isInterleaveStream);
   if (codectype == 3) {
     UsedCBR = 2;
   } else if (codectype == 2) {
@@ -300,31 +392,22 @@ void LLunpack(int one_pack_size, int pack_index) {
 
   if (ext_cfg) {
     UsedCBR = ReadBitsInDWORD(&i32, 2);
-    // printf("%d\n", UsedCBR);
     intrinsic_delay = ReadBitsInDWORD(&i32, 10);  // AudioGetL2hcWindow
-    // printf("%d\n", a7);
-    a8 = ReadBitsInDWORD(&i32, 2);  // sub_206DC
-    // printf("%d\n", a8);
+    a8 = ReadBitsInDWORD(&i32, 2);                // sub_206DC
     band_split_scale = ReadBitsInDWORD(&i32, 4);
-    // printf("%d\n", band_split_scale);
-    a9 = ReadBitsInDWORD(&i32, 1);  // AudioLLDecode
-    // printf("%d\n", a9);
+    a9 = ReadBitsInDWORD(&i32, 1);   // AudioLLDecode
     a11 = ReadBitsInDWORD(&i32, 1);  // AudioLLDecode
-    // printf("%d\n", a11);
     a12 = ReadBitsInDWORD(&i32, 1);
-    // printf("%d\n", a12);
     a13 = ReadBitsInDWORD(&i32, 1);
-    // printf("%d\n", a13);
   }
 
   if (old_frLength != frLength) {
+    LLdeinit();
     LLinit(frLength, intrinsic_delay);
-    fft_cfg = kiss_fft_alloc(frLength / 4, false, 0, 0);
-    memset(ImdctPrevious, 0, sizeof(ImdctPrevious));
+
     old_frLength = frLength;
     wave_write_header(wave_file_out, bitPerSample, (bitPerSample >> 3), smpRate2, channels, frLength);
   }
-  // uint32_t* BandId = new uint32_t[Nband + 1];
   int32_t half_active_length = (frLength - intrinsic_delay) / 2;
   if (old_band_split_scale != band_split_scale) {
     AudioGetBandId(BandId, Nband, frLength, (double)band_split_scale);
@@ -334,19 +417,16 @@ void LLunpack(int one_pack_size, int pack_index) {
   int32_t sel_FoldingParamA = 0;
   int32_t sel_FoldingParamB = 1;
   int32_t sel_FoldingParamC = 0;
-
   uint32_t out_channels = 2;
-  // int32_t quantScale[channels][Nband];
+
   int32_t(*quantScale)[Nband];
   *(int32_t**)&quantScale = new int32_t[channels * Nband];
   memset(quantScale, 0, sizeof(int32_t) * channels * Nband);
   AudioAlignReadHeadToByte(&i32);
-  int32_t(*ImdctOutput)[frLength];
-  *(int32_t**)&ImdctOutput = new int32_t[channels * frLength];
-  memset(ImdctOutput, 0, sizeof(int32_t) * channels * frLength);
-  int32_t(*DataFromStream)[frLength];
-  *(int32_t**)&DataFromStream = new int32_t[channels * frLength];
-  memset(DataFromStream, 0, sizeof(int32_t) * channels * frLength);
+  memset(ImdctOutput[0], 0, sizeof(int32_t) * frLength);
+  memset(ImdctOutput[1], 0, sizeof(int32_t) * frLength);
+  memset(DataFromStream[0], 0, sizeof(int32_t) * frLength);
+  memset(DataFromStream[1], 0, sizeof(int32_t) * frLength);
   if (a8 != 2) {  // sub_206DC
     puts("a8 must equal 2");
   }
@@ -362,24 +442,19 @@ void LLunpack(int one_pack_size, int pack_index) {
   if (a11 == 1) {
     puts("a11 cannot equal 1");
   }
-  int32_t Remaining_bits = (BitTarget - i32.read_bits) / channels;
+  int32_t Remaining_Bits_Per_Channel = (BitTarget - i32.read_bits) / channels;
 
   int32_t read_times = 0;
-  int32_t const1 = 1;                 // about channel
+  int32_t const1 = 1;  // about channel
   size_t const1_i;
-  int32_t(*is_set_signed)[frLength];  // 符号位是否已赋值
-  *(int32_t**)&is_set_signed = new int32_t[frLength * const1];
-  int32_t(*had_signed)[frLength];  // 符号位
-  *(int32_t**)&had_signed = new int32_t[frLength * const1];
-  int32_t(*unpack_data)[frLength];  // 数据
-  *(int32_t**)&unpack_data = new int32_t[frLength * const1];
-  
+  size_t Nband_i;
+
   if (UsedCBR == 1 && a12 == 1 && out_channels < channels && !isInterleaveStream) {
   } else if (channels >= 1) {
     for (size_t channels_i = 0; channels_i < channels; channels_i++) {
-      memset(is_set_signed, 0, sizeof(int32_t) * frLength * const1);
-      memset(had_signed, 0, sizeof(int32_t) * frLength * const1);
-      memset(unpack_data, 0, sizeof(int32_t) * frLength * const1);
+      memset(is_set_signed[0], 0, sizeof(int32_t) * frLength * const1);
+      memset(had_signed[0], 0, sizeof(int32_t) * frLength * const1);
+      memset(unpack_data[0], 0, sizeof(int32_t) * frLength * const1);
       if (UsedCBR != 1)  // if not CBR
       {
         // VBR
@@ -392,7 +467,7 @@ void LLunpack(int one_pack_size, int pack_index) {
 
         int32_t const0 = 0;
         for (const1_i = 0; const1_i < const1; const1_i++) {
-          for (size_t Nband_i = const0; Nband_i < Nband; Nband_i++) {
+          for (Nband_i = const0; Nband_i < Nband; Nband_i++) {
             if (diffFlag[const1_i]) {
               if (Nband_i == 0) {
                 auto tmp_p = g_huffDecBandQs[ReadBitsInDWORD(&i32, 8)];
@@ -416,14 +491,14 @@ void LLunpack(int one_pack_size, int pack_index) {
         printf(" \n");
         if (const1 >= 1) {
           for (const1_i = 0; const1_i < const1; const1_i++) {
-            for (size_t Nband_i = 0; Nband_i < Nband; Nband_i++) {
+            for (Nband_i = 0; Nband_i < Nband; Nband_i++) {
               if (quantScale[const1_i + channels_i][Nband_i] > 32) {
                 printf("error \n");
               }
             }
           }
         }
-        for (size_t Nband_i = 0; Nband_i < Nband; Nband_i++) {
+        for (Nband_i = 0; Nband_i < Nband; Nband_i++) {
           for (const1_i = 0; const1_i < const1; const1_i++) {
             if (quantScale[channels_i + const1_i][Nband_i] <= 0) {
               continue;
@@ -500,10 +575,10 @@ void LLunpack(int one_pack_size, int pack_index) {
                 if (quantScale[channels_i + const1_i][Nband_i] >= 4) {
                   tmp_data += ReadBitsInDWORD(&i32, need_read);
                 }
-                unpack_data[0][tmpBandId] += tmp_data;
-                if (!is_set_signed[0][tmpBandId] && tmp_data >= 1) {
-                  had_signed[0][tmpBandId] = ReadBitsInDWORD(&i32, 1);
-                  is_set_signed[0][tmpBandId] = 1;
+                unpack_data[const1_i][tmpBandId] += tmp_data;
+                if (!is_set_signed[const1_i][tmpBandId] && tmp_data >= 1) {
+                  had_signed[const1_i][tmpBandId] = ReadBitsInDWORD(&i32, 1);
+                  is_set_signed[const1_i][tmpBandId] = 1;
                 }
                 tmpBandId += 1;
               }
@@ -526,7 +601,7 @@ void LLunpack(int one_pack_size, int pack_index) {
         for (const1_i = 0; const1_i < const1; const1_i++) {
           diffFlag[const1_i] = ReadBitsInDWORD(&i32, 1);
         }
-        auto tmp_f1 = fmin(fmax(sqrt((double)Remaining_bits / (double)(frLength * const1)), 0.2), 1.0);
+        auto tmp_f1 = fmin(fmax(sqrt((double)Remaining_Bits_Per_Channel / (double)(frLength * const1)), 0.2), 1.0);
         int32_t newNband = 0;
         int32_t pre_val = BandId[0], next_val = 0;
         for (newNband = 0; newNband < Nband; newNband++) {
@@ -547,7 +622,7 @@ void LLunpack(int one_pack_size, int pack_index) {
 
         int32_t const0 = 0;
         for (const1_i = 0; const1_i < const1; const1_i++) {
-          for (size_t Nband_i = const0; Nband_i < newNband; Nband_i++) {
+          for (Nband_i = const0; Nband_i < newNband; Nband_i++) {
             if (diffFlag[const1_i]) {
               if (Nband_i == 0) {
                 auto tmp_p = g_huffDecBandQs[ReadBitsInDWORD(&i32, 8)];
@@ -568,7 +643,7 @@ void LLunpack(int one_pack_size, int pack_index) {
           }
         }
         for (const1_i = 0; const1_i < const1; const1_i++) {
-          for (size_t Nband_i = 0; Nband_i < newNband; Nband_i++) {
+          for (Nband_i = 0; Nband_i < newNband; Nband_i++) {
             if (quantScale[const1_i + channels_i][Nband_i] > 32) {
               printf("error \n");
             }
@@ -621,7 +696,7 @@ void LLunpack(int one_pack_size, int pack_index) {
           for (const1_i = 0; const1_i < const1; const1_i++) {
             continue_flag |= AudioBandPsyAcoustic(psyScalefactor[const1_i], Nband, x1, inner_mem_pool3[const1_i]);
 
-            for (size_t Nband_i = 0; Nband_i < newNband; Nband_i++) {
+            for (Nband_i = 0; Nband_i < newNband; Nband_i++) {
               psyScalefactor[const1_i][Nband_i] -= inner_mem_pool3[const1_i][Nband_i];
               quantScale[const1_i + channels_i][Nband_i] =
                   psyScalefactor_bak[const1_i][Nband_i] - psyScalefactor[const1_i][Nband_i];
@@ -630,14 +705,14 @@ void LLunpack(int one_pack_size, int pack_index) {
           // AudioEstimateBitCount
           int EstimateBitCount = 0;
           for (const1_i = 0; const1_i < const1; const1_i++) {
-            for (size_t Nband_i = 0; Nband_i < newNband; Nband_i++) {
+            for (Nband_i = 0; Nband_i < newNband; Nband_i++) {
               EstimateBitCount +=
                   (BandId[Nband_i + 1] - BandId[Nband_i]) * (quantScale[const1_i + channels_i][Nband_i] + 2);
             }
           }
 
-          if ((EstimateBitCount >= (Remaining_bits + already_Readbits - i32.read_bits)) || !continue_flag) {
-            for (size_t Nband_i = 0; Nband_i < newNband; Nband_i++) {
+          if ((EstimateBitCount >= (Remaining_Bits_Per_Channel + already_Readbits - i32.read_bits)) || !continue_flag) {
+            for (Nband_i = 0; Nband_i < newNband; Nband_i++) {
               print_times += 1;
               for (const1_i = 0; const1_i < const1; const1_i++) {
                 auto NoiseFloorScale = psyScalefactor[const1_i][Nband_i];
@@ -647,7 +722,7 @@ void LLunpack(int one_pack_size, int pack_index) {
                 if (quantScale[channels_i + const1_i][Nband_i] == 2) {
                   int32_t tmpBandId = BandId[Nband_i];
                   while (tmpBandId < BandId[Nband_i + 1]) {
-                    if (i32.read_bits >= (Remaining_bits + already_Readbits - 12)) {
+                    if (i32.read_bits >= (Remaining_Bits_Per_Channel + already_Readbits - 12)) {
                       // printf("out of read\n");
                       continue_flag = 0;
                       break;
@@ -670,7 +745,7 @@ void LLunpack(int one_pack_size, int pack_index) {
                   if (tmpBandsize >= 3) {
                     int32_t BandIdoffset = 2;
                     for (size_t i = 0; i < band_size_div3; BandIdoffset += 3, i++) {
-                      if (i32.read_bits >= (Remaining_bits + already_Readbits - 12)) {
+                      if (i32.read_bits >= (Remaining_Bits_Per_Channel + already_Readbits - 12)) {
                         // printf("out of read\n");
                         continue_flag = 0;
                         break;
@@ -705,7 +780,7 @@ void LLunpack(int one_pack_size, int pack_index) {
                   if (band_size_remain3 >= 1) {
                     for (size_t band_size_remain3_index = 0; band_size_remain3_index < band_size_remain3;
                          band_size_remain3_index++) {
-                      if (i32.read_bits >= (Remaining_bits + already_Readbits - 12)) {
+                      if (i32.read_bits >= (Remaining_Bits_Per_Channel + already_Readbits - 12)) {
                         // printf("out of read\n");
                         continue_flag = 0;
                         break;
@@ -724,7 +799,7 @@ void LLunpack(int one_pack_size, int pack_index) {
                   int32_t tmpBandId = BandId[Nband_i];
 
                   while (tmpBandId < BandId[Nband_i + 1]) {
-                    if (i32.read_bits >= (Remaining_bits + already_Readbits - 12)) {
+                    if (i32.read_bits >= (Remaining_Bits_Per_Channel + already_Readbits - 12)) {
                       // printf("out of read\n");
                       continue_flag = 0;
                       break;
@@ -736,10 +811,10 @@ void LLunpack(int one_pack_size, int pack_index) {
                     if (quantScale[channels_i + const1_i][Nband_i] >= 4) {
                       tmp_data += ReadBitsInDWORD(&i32, need_read);
                     }
-                    unpack_data[0][tmpBandId] += tmp_data << NoiseFloorScale;
-                    if (!is_set_signed[0][tmpBandId] && tmp_data >= 1) {
-                      had_signed[0][tmpBandId] = ReadBitsInDWORD(&i32, 1);
-                      is_set_signed[0][tmpBandId] = 1;
+                    unpack_data[const1_i][tmpBandId] += tmp_data << NoiseFloorScale;
+                    if (!is_set_signed[const1_i][tmpBandId] && tmp_data >= 1) {
+                      had_signed[const1_i][tmpBandId] = ReadBitsInDWORD(&i32, 1);
+                      is_set_signed[const1_i][tmpBandId] = 1;
                     }
                     tmpBandId += 1;
                   }
@@ -748,7 +823,7 @@ void LLunpack(int one_pack_size, int pack_index) {
             }
             memcpy(psyScalefactor_bak, psyScalefactor, sizeof(int32_t) * Nband * const1);
           } else {
-            if ((EstimateBitCount >= (Remaining_bits + already_Readbits - i32.read_bits))) {
+            if ((EstimateBitCount >= (Remaining_Bits_Per_Channel + already_Readbits - i32.read_bits))) {
               continue_flag = 0;
             }
           }
@@ -772,7 +847,7 @@ void LLunpack(int one_pack_size, int pack_index) {
         for (const1_i = 0; const1_i < const1; const1_i++) {
           int32_t BandQsTotal = AudioGetBandQsTotal(psyScalefactor[const1_i], newNband, BandId);
           int32_t BandQsTotal_bak = BandQsTotal;
-          for (size_t Nband_i = 0; Nband_i < newNband; Nband_i++) {
+          for (Nband_i = 0; Nband_i < newNband; Nband_i++) {
             auto pSf = psyScalefactor[const1_i][Nband_i];
             if (pSf <= 1) pSf = 0;
             if (pSf != 0 && Nband_i < (newNband >> 1)) {
@@ -789,7 +864,7 @@ void LLunpack(int one_pack_size, int pack_index) {
             }
           }
           if (a13 == 1) {
-            for (size_t Nband_i = 0; Nband_i < newNband; Nband_i++) {
+            for (Nband_i = 0; Nband_i < newNband; Nband_i++) {
               auto pSf = psyScalefactor[const1_i][Nband_i] - 3;
               if (pSf <= 0) {
                 continue;
@@ -815,10 +890,7 @@ void LLunpack(int one_pack_size, int pack_index) {
         operator delete[](inner_mem_pool3);
       }
     }
-  }       
-  operator delete[](is_set_signed);
-  operator delete[](had_signed);
-  operator delete[](unpack_data);
+  }
   operator delete[](quantScale);
   /*
   for (size_t i = 0; i < 2; i++)
@@ -830,7 +902,7 @@ void LLunpack(int one_pack_size, int pack_index) {
     printf("\n\n");
   }
   */
-  if ((one_pack_size * 8 - i32.read_bits) > 8 || (one_pack_size * 8 - i32.read_bits) < -8) {
+  if (abs(i32.total_bits - i32.read_bits) > 8) {
     printf("error %d\n", pack_index);
   }
   AudioAlignReadHeadToByte(&i32);
@@ -839,12 +911,9 @@ void LLunpack(int one_pack_size, int pack_index) {
 
   auto AudioIntInvMs = [](int32_t* ch1, int32_t* ch2, int32_t infrLength) {
     for (size_t i = 0; i < infrLength; i++) {
-      int32_t v8 = (int64_t)(0x7FFFFFFFCAFB0CCDll * ((int64_t)ch2[i])) >> 31;  // *= 1/-(1+sqrt(2))
-      ch1[i] -= v8;
-      v8 = (int64_t)(0x5A827999 * ((int64_t)ch1[i])) >> 31;  //*= sqrt(2)/2
-      ch2[i] -= v8;
-      v8 = (int64_t)(0x7FFFFFFFCAFB0CCDll * ((int64_t)ch2[i])) >> 31;  // *= 1/-(1+sqrt(2))
-      ch1[i] -= v8;
+      ch1[i] -= (int64_t)(0x7FFFFFFFCAFB0CCDll * ((int64_t)ch2[i])) >> 31;  // *= 1/-(1+sqrt(2))
+      ch2[i] -= (int64_t)(0x000000005A827999ll * ((int64_t)ch1[i])) >> 31;  // *= sqrt(2)/2
+      ch1[i] -= (int64_t)(0x7FFFFFFFCAFB0CCDll * ((int64_t)ch2[i])) >> 31;  // *= 1/-(1+sqrt(2))
       // ch1=(sqrt(2)/2)*(ch2+ch1)
       // ch2=(sqrt(2)/2)*(ch2-ch1)
     }
@@ -857,89 +926,87 @@ void LLunpack(int one_pack_size, int pack_index) {
   if (a9 != 1) {
     puts("a9 must equal 1");
   }
-  auto AudioDct4 = [](int32_t* in, int32_t len, int32_t* out, int32_t* inTwParamA, int32_t* inTwParamB ,kiss_fft_cfg cfg) {
-    int32_t _max_ = abs(in[0]);
-    int32_t* inner_mem_block1 = new int32_t[len * 2];
-    memset(inner_mem_block1, 0, 2 * len * sizeof(int32_t));
-    int32_t* inner_mem_block2 = new int32_t[len * 2];
-    memset(inner_mem_block2, 0, 2 * len * sizeof(int32_t));
-    size_t i;
-    for (i = 0; i < len; i++) {
-      if (abs(in[i]) > _max_) {
-        _max_ = abs(in[i]);
-      }
-    }
+  auto AudioDct4 =
+      [](int32_t* in, int32_t len, int32_t* out, int32_t* inTwParamA, int32_t* inTwParamB, kiss_fft_cfg cfg) {
+        int32_t _max_ = abs(in[0]);
+        memset(fft_block1, 0, 2 * len * sizeof(int32_t));
+        memset(fft_block2, 0, 2 * len * sizeof(int32_t));
+        size_t i;
+        for (i = 0; i < len; i++) {
+          if (abs(in[i]) > _max_) {
+            _max_ = abs(in[i]);
+          }
+        }
 
-    int32_t _max_bits = 0;
-    while ((_max_ >> _max_bits) != 0) {
-      _max_bits += 1;
-    }
-    int32_t len_bits = 0;
-    while ((len >> len_bits) != 0) {
-      len_bits += 1;
-    }
+        int32_t _max_bits = 0;
+        while ((_max_ >> _max_bits) != 0) {
+          _max_bits += 1;
+        }
+        int32_t len_bits = 0;
+        while ((len >> len_bits) != 0) {
+          len_bits += 1;
+        }
 
-    int32_t over_flowing_bits = len_bits + _max_bits;
+        int32_t over_flowing_bits = len_bits + _max_bits;
 
-    over_flowing_bits -= 31;
-    if (over_flowing_bits > 2) {
-      over_flowing_bits = 2;
-    } else if (over_flowing_bits < 0) {
-      over_flowing_bits = 0;
-    }
+        over_flowing_bits -= 31;
+        if (over_flowing_bits > 2) {
+          over_flowing_bits = 2;
+        } else if (over_flowing_bits < 0) {
+          over_flowing_bits = 0;
+        }
 
-    for (i = 0; i < len; i++) {
-      inner_mem_block1[i] = (in[i] >> over_flowing_bits);  // * (len >> 1);//* (len >> 1)是因为kissfft的算法问题
-    }
-    for (size_t i = 1, j = len - 1; i < len / 2; i += 2, j -= 2) {
-      auto tmp = inner_mem_block1[i];
-      inner_mem_block1[i] = inner_mem_block1[j];
-      inner_mem_block1[j] = tmp;
-    }
-    for (i = 0; i < len; i += 2) {
-      auto tmp1 = inner_mem_block1[i];
-      auto tmp2 = inner_mem_block1[i + 1];
-      inner_mem_block1[i] =
-          (((uint64_t)((int64_t)tmp1 * (int64_t)inTwParamA[i >> 1]) >> 31) -
-           ((uint64_t)((int64_t)tmp2 * (int64_t)inTwParamB[i >> 1]) >> 31));
-      inner_mem_block1[i + 1] =
-          (((uint64_t)((int64_t)tmp1 * (int64_t)inTwParamB[i >> 1]) >> 31) +
-           ((uint64_t)((int64_t)tmp2 * (int64_t)inTwParamA[i >> 1]) >> 31));
-    }
+        for (i = 0; i < len; i++) {
+          fft_block1[i] = (in[i] >> over_flowing_bits);  // * (len >> 1);//* (len >> 1)是因为kissfft的算法问题
+        }
+        for (size_t i = 1, j = len - 1; i < len / 2; i += 2, j -= 2) {
+          auto tmp = fft_block1[i];
+          fft_block1[i] = fft_block1[j];
+          fft_block1[j] = tmp;
+        }
+        for (i = 0; i < len; i += 2) {
+          auto tmp1 = fft_block1[i];
+          auto tmp2 = fft_block1[i + 1];
+          fft_block1[i] =
+              (((uint64_t)((int64_t)tmp1 * (int64_t)inTwParamA[i >> 1]) >> 31) -
+               ((uint64_t)((int64_t)tmp2 * (int64_t)inTwParamB[i >> 1]) >> 31));
+          fft_block1[i + 1] =
+              (((uint64_t)((int64_t)tmp1 * (int64_t)inTwParamB[i >> 1]) >> 31) +
+               ((uint64_t)((int64_t)tmp2 * (int64_t)inTwParamA[i >> 1]) >> 31));
+        }
 
-    kiss_fft(cfg, (kiss_fft_cpx*)inner_mem_block1, (kiss_fft_cpx*)inner_mem_block2);
+        kiss_fft(cfg, (kiss_fft_cpx*)fft_block1, (kiss_fft_cpx*)fft_block2);
 
-    for (i = 0; i < len; i += 2) {
-      auto tmp1 = inner_mem_block2[i];
-      auto tmp2 = inner_mem_block2[i + 1];
-      out[i] = (((uint64_t)((int64_t)tmp1 * (int64_t)inTwParamA[i >> 1]) >> 31) -
-                ((uint64_t)((int64_t)tmp2 * (int64_t)inTwParamB[i >> 1]) >> 31)) *
-               2;
-      out[i + 1] = (((uint64_t)((int64_t)tmp1 * (int64_t)inTwParamB[i >> 1]) >> 31) +
-                    ((uint64_t)((int64_t)tmp2 * (int64_t)inTwParamA[i >> 1]) >> 31)) *
+        for (i = 0; i < len; i += 2) {
+          auto tmp1 = fft_block2[i];
+          auto tmp2 = fft_block2[i + 1];
+          out[i] = (((uint64_t)((int64_t)tmp1 * (int64_t)inTwParamA[i >> 1]) >> 31) -
+                    ((uint64_t)((int64_t)tmp2 * (int64_t)inTwParamB[i >> 1]) >> 31)) *
                    2;
-    }
-    size_t j;
-    for (i = 1, j = len - 1; i < len / 2; i += 2, j -= 2) {
-      auto tmp = -out[i];
-      out[i] = -out[j];
-      out[j] = tmp;
-    }
-    int64_t normal = sqrt(0.5 / (double)len) * INT32_MAX_F;
-    for (i = 0; i < len; i++) {
-      out[i] = ((normal * out[i]) >> 31) << over_flowing_bits;
-    }
-    operator delete[](inner_mem_block1);
-    operator delete[](inner_mem_block2);
-    return;
-  };
+          out[i + 1] = (((uint64_t)((int64_t)tmp1 * (int64_t)inTwParamB[i >> 1]) >> 31) +
+                        ((uint64_t)((int64_t)tmp2 * (int64_t)inTwParamA[i >> 1]) >> 31)) *
+                       2;
+        }
+        size_t j;
+        for (i = 1, j = len - 1; i < len / 2; i += 2, j -= 2) {
+          auto tmp = -out[i];
+          out[i] = -out[j];
+          out[j] = tmp;
+        }
+        int64_t normal = sqrt(0.5 / (double)len) * INT32_MAX_F;
+        for (i = 0; i < len; i++) {
+          out[i] = ((normal * out[i]) >> 31) << over_flowing_bits;
+        }
+        return;
+      };
   // AudioMonoIntMdctSyn start
-  memcpy(ImdctOutput, DataFromStream, sizeof(int32_t) * frLength * channels);
+
+  memcpy(ImdctOutput[0], DataFromStream[0], sizeof(int32_t) * frLength);
+  memcpy(ImdctOutput[1], DataFromStream[1], sizeof(int32_t) * frLength);
   // decode per channel
   // sub_21814 start
   for (size_t channels_i = 0; channels_i < channels; channels_i++) {
-    auto inner_mem_block0 = new int32_t[2 * frLength];
-    memset(inner_mem_block0, 0, sizeof(int32_t) * frLength);
+    memset(mdct_block1, 0, sizeof(int32_t) * 2 * frLength);
     auto half_frLength = frLength >> 1;
     auto last_index = frLength - 1;
     auto ImdctOutput_chn = ImdctOutput[channels_i];
@@ -957,27 +1024,27 @@ void LLunpack(int one_pack_size, int pack_index) {
       ImdctOutput_chn[i] -= (uint64_t)((int64_t)RotationTable_tan[i] * (int64_t)ImdctOutput_chn[last_index - i]) >> 31;
     }
 
-    AudioDct4(&ImdctOutput_chn[half_frLength], half_frLength, inner_mem_block0, _TwParamA, _TwParamB,fft_cfg);
+    AudioDct4(&ImdctOutput_chn[half_frLength], half_frLength, mdct_block1, _TwParamA, _TwParamB, fft_cfg);
 
     for (i = 0; i < half_frLength; i++) {
-      ImdctOutput_chn[i] -= (uint64_t)(0x5A827999LL * (int64_t)inner_mem_block0[i]) >> 31;
+      ImdctOutput_chn[i] -= (uint64_t)(0x5A827999LL * (int64_t)mdct_block1[i]) >> 31;
     }
-    AudioDct4(&ImdctOutput_chn[0], half_frLength, inner_mem_block0, _TwParamA, _TwParamB,fft_cfg);
+    AudioDct4(&ImdctOutput_chn[0], half_frLength, mdct_block1, _TwParamA, _TwParamB, fft_cfg);
     for (i = 0; i < half_frLength; i++) { /*
-       ImdctOutput_chn[half_frLength + i] -= ((uint64_t)(0x7FFFFFFFA57D8668LL * (int64_t)inner_mem_block0[i]) >> 31)
+       ImdctOutput_chn[half_frLength + i] -= ((uint64_t)(0x7FFFFFFFA57D8668LL * (int64_t)mdct_block1[i]) >> 31)
                                              << 1;*/
-      ImdctOutput_chn[half_frLength + i] -= ((uint64_t)(0x7FFFFFFFA57D8668LL * (int64_t)inner_mem_block0[i]) >> 30);
+      ImdctOutput_chn[half_frLength + i] -= ((uint64_t)(0x7FFFFFFFA57D8668LL * (int64_t)mdct_block1[i]) >> 30);
     }
-    AudioDct4(&ImdctOutput_chn[half_frLength], half_frLength, inner_mem_block0, _TwParamA, _TwParamB ,fft_cfg);
+    AudioDct4(&ImdctOutput_chn[half_frLength], half_frLength, mdct_block1, _TwParamA, _TwParamB, fft_cfg);
     for (i = 0; i < half_frLength; i++) {
-      ImdctOutput_chn[i] -= (uint64_t)(0x5A827999LL * (int64_t)inner_mem_block0[i]) >> 31;
+      ImdctOutput_chn[i] -= (uint64_t)(0x5A827999LL * (int64_t)mdct_block1[i]) >> 31;
       ImdctOutput_chn[i] -= (uint64_t)(0x7FFFFFFFC0000001LL * (int64_t)ImdctOutput_chn[half_frLength + i]) >> 31;
       ImdctOutput_chn[half_frLength + i] -= ImdctOutput_chn[i];
     }
-    memcpy(inner_mem_block0, ImdctOutput_chn, sizeof(int32_t) * frLength);
+    memcpy(mdct_block1, ImdctOutput_chn, sizeof(int32_t) * frLength);
     for (i = 0; i < half_frLength; i++) {
-      ImdctOutput_chn[i * 2] = inner_mem_block0[i];
-      ImdctOutput_chn[i * 2 + 1] = inner_mem_block0[half_frLength + i];
+      ImdctOutput_chn[i * 2] = mdct_block1[i];
+      ImdctOutput_chn[i * 2 + 1] = mdct_block1[half_frLength + i];
     }
 
     // sub_21D20 start
@@ -996,59 +1063,55 @@ void LLunpack(int one_pack_size, int pack_index) {
     }
 
     //  AudioIntInvWinTdac start
-    auto inner_mem_block1 = new int32_t[frLength];
-    memset(inner_mem_block0, 0, sizeof(int32_t) * 2 * frLength);
+    memset(mdct_block1, 0, sizeof(int32_t) * 2 * frLength);
 
-    // memset(inner_mem_block1, 0, sizeof(int32_t) * frLength);
+    // memset(mdct_block2, 0, sizeof(int32_t) * frLength);
     int32_t half_intrinsic_delay = intrinsic_delay >> 1;
-    memcpy(inner_mem_block1, ImdctOutput_chn, sizeof(int32_t) * frLength);
-    memcpy(inner_mem_block0, &ImdctPrevious[channels_i][half_intrinsic_delay], sizeof(int32_t) * half_active_length);
-    memcpy(
-        &inner_mem_block0[half_active_length],
-        &inner_mem_block1[half_intrinsic_delay],
-        sizeof(int32_t) * half_active_length);
+    memcpy(mdct_block2, ImdctOutput_chn, sizeof(int32_t) * frLength);
+    memcpy(mdct_block1, &ImdctPrevious[channels_i][half_intrinsic_delay], sizeof(int32_t) * half_active_length);
+    memcpy(&mdct_block1[half_active_length], &mdct_block2[half_intrinsic_delay], sizeof(int32_t) * half_active_length);
     memcpy(
         &ImdctPrevious[channels_i][half_intrinsic_delay],
-        &inner_mem_block1[half_intrinsic_delay + half_active_length],
+        &mdct_block2[half_intrinsic_delay + half_active_length],
         sizeof(int32_t) * half_active_length);
-    // inner_mem_block0[intrinsic_delay];
+
     // sub_214B0
     {
       for (i = 0; i < half_active_length / 2; i++) {
-        auto backup1 = inner_mem_block0[half_active_length + i];
-        inner_mem_block0[half_active_length + i] = inner_mem_block0[2 * half_active_length - i - 1];
-        inner_mem_block0[2 * half_active_length - i - 1] = backup1;
+        auto backup1 = mdct_block1[half_active_length + i];
+        mdct_block1[half_active_length + i] = mdct_block1[2 * half_active_length - i - 1];
+        mdct_block1[2 * half_active_length - i - 1] = backup1;
       }
       for (i = 0; i < half_active_length * sel_FoldingParamA; i++) {
-        inner_mem_block0[i] -= (uint64_t)((int64_t)inner_mem_block0[half_active_length + i] *
-                                          (int64_t)FoldingParamA[half_intrinsic_delay + i]) >>
-                               31;
+        mdct_block1[i] -= (uint64_t)((int64_t)mdct_block1[half_active_length + i] *
+                                     (int64_t)FoldingParamA[half_intrinsic_delay + i]) >>
+                          31;
       }
 
       for (i = 0; i < half_active_length * sel_FoldingParamB; i++) {
-        inner_mem_block0[half_active_length + i] -=
-            (uint64_t)((int64_t)inner_mem_block0[i] * (int64_t)FoldingParamB[half_intrinsic_delay + i]) >> 31;
+        mdct_block1[half_active_length + i] -=
+            (uint64_t)((int64_t)mdct_block1[i] * (int64_t)FoldingParamB[half_intrinsic_delay + i]) >> 31;
       }
 
       for (i = 0; i < half_active_length * sel_FoldingParamC; i++) {
-        inner_mem_block0[i] -= (uint64_t)((int64_t)inner_mem_block0[half_active_length + i] *
-                                          (int64_t)FoldingParamC[half_intrinsic_delay + i]) >>
-                               31;
+        mdct_block1[i] -= (uint64_t)((int64_t)mdct_block1[half_active_length + i] *
+                                     (int64_t)FoldingParamC[half_intrinsic_delay + i]) >>
+                          31;
       }
 
       for (i = 0; i < half_active_length / 2; i++) {
-        auto backup1 = inner_mem_block0[half_active_length + i];
-        inner_mem_block0[half_active_length + i] = inner_mem_block0[2 * half_active_length - i - 1];
-        inner_mem_block0[2 * half_active_length - i - 1] = backup1;
+        auto backup1 = mdct_block1[half_active_length + i];
+        mdct_block1[half_active_length + i] = mdct_block1[2 * half_active_length - i - 1];
+        mdct_block1[2 * half_active_length - i - 1] = backup1;
       }
     }
     for (i = 0; i < half_active_length; i++) {  //?
-      ImdctOutput_chn[intrinsic_delay + i] = inner_mem_block0[half_active_length + i];
+      ImdctOutput_chn[intrinsic_delay + i] = mdct_block1[half_active_length + i];
     }
 
     memcpy(
         &ImdctOutput_chn[intrinsic_delay + half_active_length],
-        &inner_mem_block1[half_intrinsic_delay + half_active_length],
+        &mdct_block2[half_intrinsic_delay + half_active_length],
         sizeof(int32_t) * half_active_length);
 
     for (i = 0; i < half_intrinsic_delay; i++) {
@@ -1056,9 +1119,9 @@ void LLunpack(int one_pack_size, int pack_index) {
     }
     memcpy(
         ImdctPrevious[channels_i],
-        &inner_mem_block1[frLength - half_intrinsic_delay],
+        &mdct_block2[frLength - half_intrinsic_delay],
         half_intrinsic_delay * sizeof(int32_t));
-    memcpy(&ImdctOutput_chn[half_intrinsic_delay], inner_mem_block1, half_intrinsic_delay * sizeof(int32_t));
+    memcpy(&ImdctOutput_chn[half_intrinsic_delay], mdct_block2, half_intrinsic_delay * sizeof(int32_t));
     // sub_214B0
     {
       for (i = 0; i < half_intrinsic_delay / 2; i++) {
@@ -1087,29 +1150,21 @@ void LLunpack(int one_pack_size, int pack_index) {
         ImdctOutput_chn[2 * half_intrinsic_delay - 1 - i] = backup1;
       }
     }
-    operator delete[](inner_mem_block0);
-    operator delete[](inner_mem_block1);
   }
   memset(wave_pcm_buf, 0, sizeof(wave_pcm_buf));
 
-  AudioWaveOutputFromInt24((int32_t*)ImdctOutput, frLength, channels, bitPerSample, wave_pcm_buf);
+  AudioWaveOutputFromInt24((int32_t**)ImdctOutput, frLength, channels, bitPerSample, wave_pcm_buf);
 
   fwrite(wave_pcm_buf, 1, frLength * channels * bitPerSample >> 3, wave_file_out);
 
-  operator delete[](ImdctOutput);
-  operator delete[](DataFromStream);
-  // operator delete[](BandId);
-  // if (cfg) {
-  //  kiss_fft_free(cfg);
-  //}
+  return;
 }
-
-void AudioWaveOutputFromInt24(int32_t* in, int32_t frLength, int32_t channels, int bitPerSample, void* pcm_out) {
+void AudioWaveOutputFromInt24(int32_t** in, int32_t frLength, int32_t channels, int bitPerSample, void* pcm_out) {
   switch (bitPerSample) {
     case -32: {
       for (size_t i = 0; i < channels; i++) {
         for (size_t j = 0; j < frLength; j++) {
-          auto sample = in[j + i * frLength];
+          auto sample = in[i][j];
           if (sample < -0x800000) {
             sample = -0x800000;
           } else if (sample > 0x800000) {
@@ -1122,7 +1177,7 @@ void AudioWaveOutputFromInt24(int32_t* in, int32_t frLength, int32_t channels, i
     case 16: {
       for (size_t i = 0; i < channels; i++) {
         for (size_t j = 0; j < frLength; j++) {
-          auto sample = in[j + i * frLength];
+          auto sample = in[i][j];
           if (sample < -0x800000) {
             sample = -0x800000;
           } else if (sample > 0x800000) {
@@ -1136,7 +1191,7 @@ void AudioWaveOutputFromInt24(int32_t* in, int32_t frLength, int32_t channels, i
     case 24: {
       for (size_t i = 0; i < channels; i++) {
         for (size_t j = 0; j < frLength; j++) {
-          auto sample = in[j + i * frLength];
+          auto sample = in[i][j];
           if (sample < -0x800000) {
             sample = -0x800000;
           } else if (sample > 0x800000) {
@@ -1151,7 +1206,7 @@ void AudioWaveOutputFromInt24(int32_t* in, int32_t frLength, int32_t channels, i
     case 32: {
       for (size_t i = 0; i < channels; i++) {
         for (size_t j = 0; j < frLength; j++) {
-          auto sample = in[j + i * frLength];
+          auto sample = in[i][j];
           if (sample < -0x800000) {
             sample = -0x800000;
           } else if (sample > 0x800000) {
@@ -1171,7 +1226,7 @@ char x[100];
 int main() {
   // bit_record = fopen("E:/codec/L2HC/bit_record3.bin", "wb");
   FILE* fp = NULL;
-  fp = fopen("./48kS32_enc.bin", "rb");
+  fp = fopen("./8dw_enc.bin", "rb");
 
   int read_count = 0;
   int one_pack_size = 0;
@@ -1182,7 +1237,7 @@ int main() {
   fseek(fp, 0, SEEK_SET);
 #if 1
   size_t i = 0;
-  wave_file_out = fopen("./48kS32_tests.wav", "wb");
+  wave_file_out = fopen("./8dw_tests.wav", "wb");
   memset(x, ' ', sizeof(x));
   x[5 + 52] = 0;
   int old_rate = -1;
@@ -1208,6 +1263,7 @@ int main() {
       break;
     }*/
   }
+  LLdeinit();
   printf("\n");
   fseek(wave_file_out, 0, SEEK_SET);
 
