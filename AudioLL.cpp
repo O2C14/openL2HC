@@ -31,11 +31,11 @@ extern int32_t g_mdctHraWindow960With10MsQ30[];
 uint32_t readbits_times = 0;
 
 typedef struct {
-  uint32_t* stream_buffer;        // 0
-  int32_t index_in_stream;        // 20
-  int32_t index_in_DWORD;         // 24
-  int32_t total_bits;  // 28
-  int32_t read_bits;              // 32
+  uint32_t* stream_buffer;  // 0
+  int32_t index_in_stream;  // 20
+  int32_t index_in_DWORD;   // 24
+  int32_t total_bits;       // 28
+  int32_t read_bits;        // 32
 } read_index2;
 FILE* bit_record = NULL;
 uint64_t ReadBitsInDWORD(read_index2* i32, int nbits) {
@@ -122,10 +122,10 @@ int32_t* RotationTable_tan = NULL;
 int32_t* FoldingParamA = NULL;
 int32_t* FoldingParamB = NULL;
 int32_t* FoldingParamC = NULL;
-int32_t* _TwParamA = NULL;
-int32_t* _TwParamB = NULL;
-int32_t* _TwParamC = NULL;
-int32_t* _TwParamD = NULL;
+int32_t* TwParamA = NULL;
+int32_t* TwParamB = NULL;
+int32_t* TwParamC = NULL;
+int32_t* TwParamD = NULL;
 
 int32_t* ImdctPrevious[2];
 
@@ -143,7 +143,7 @@ int32_t* mdct_block2 = NULL;
 // int32_t (*quantScale)[0];
 
 FILE* wave_file_out = NULL;
-int32_t wave_pcm_buf[2 * 960];
+int32_t* wave_pcm_buf;
 
 int32_t BandId[64];
 
@@ -175,6 +175,7 @@ void LLinit(int32_t frLength, int32_t intrinsic_delay) {
   if (g_mdctHraWindow == NULL) {
     return;
   }
+
   fft_cfg = kiss_fft_alloc(frLength / 4, false, 0, 0);
   ImdctPrevious[0] = (int32_t*)malloc(frLength * sizeof(int32_t));
   ImdctPrevious[1] = (int32_t*)malloc(frLength * sizeof(int32_t));
@@ -183,15 +184,41 @@ void LLinit(int32_t frLength, int32_t intrinsic_delay) {
 
   RotationTable_sin = (int32_t*)malloc(half_frLength * sizeof(int32_t));
   RotationTable_tan = (int32_t*)malloc(half_frLength * sizeof(int32_t));
+
+  FoldingParamA = (int32_t*)malloc(half_frLength * sizeof(int32_t));
+  FoldingParamB = (int32_t*)malloc(half_frLength * sizeof(int32_t));
+  FoldingParamC = (int32_t*)malloc(half_frLength * sizeof(int32_t));
+
+  TwParamA = (int32_t*)malloc(half_frLength / 2 * sizeof(int32_t));
+  TwParamB = (int32_t*)malloc(half_frLength / 2 * sizeof(int32_t));
+  TwParamC = (int32_t*)malloc(half_frLength * sizeof(int32_t));
+  TwParamD = (int32_t*)malloc(half_frLength * sizeof(int32_t));
+
+  is_set_signed[0] = (int32_t*)malloc(frLength * sizeof(int32_t));
+  had_signed[0] = (int32_t*)malloc(frLength * sizeof(int32_t));
+  unpack_data[0] = (int32_t*)malloc(frLength * sizeof(int32_t));
+
+  ImdctOutput[0] = (int32_t*)malloc(frLength * sizeof(int32_t));
+  ImdctOutput[1] = (int32_t*)malloc(frLength * sizeof(int32_t));
+
+  DataFromStream[0] = (int32_t*)malloc(frLength * sizeof(int32_t));
+  DataFromStream[1] = (int32_t*)malloc(frLength * sizeof(int32_t));
+
+  fft_block1 = (int32_t*)malloc(frLength * sizeof(int32_t));
+  fft_block2 = (int32_t*)malloc(frLength * sizeof(int32_t));
+
+  mdct_block1 = (int32_t*)malloc(2 * frLength * sizeof(int32_t));
+  mdct_block2 = (int32_t*)malloc(2 * frLength * sizeof(int32_t));
+
+  wave_pcm_buf = (int32_t*)malloc(2 * frLength * sizeof(int32_t));
+
   for (i = 0; i < half_frLength; i++) {
     auto tmp_sin = sin((double)(i * 2 + 1) * M_PI / (double)(4 * frLength));
     RotationTable_sin[i] = (tmp_sin * INT32_MAX_F);
     auto tmp_cos = cos((double)(i * 2 + 1) * M_PI / (double)(4 * frLength));
     RotationTable_tan[i] = ((tmp_cos + -1.0) / tmp_sin * INT32_MAX_F);
   }
-  FoldingParamA = (int32_t*)malloc(half_frLength * sizeof(int32_t));
-  FoldingParamB = (int32_t*)malloc(half_frLength * sizeof(int32_t));
-  FoldingParamC = (int32_t*)malloc(half_frLength * sizeof(int32_t));
+
   for (i = 0; i < half_intrinsic_delay; i++) {
     FoldingParamB[i] = -g_mdctHraWindow[half_frLength - half_intrinsic_delay + i];
   }
@@ -242,38 +269,22 @@ void LLinit(int32_t frLength, int32_t intrinsic_delay) {
       FoldingParamC[half_intrinsic_delay + i] = 0x7FFFFFFF;
     }
   }
-  _TwParamA = (int32_t*)malloc(frLength / 4 * sizeof(int32_t));
-  _TwParamB = (int32_t*)malloc(frLength / 4 * sizeof(int32_t));
-  _TwParamC = (int32_t*)malloc(frLength / 2 * sizeof(int32_t));
-  _TwParamD = (int32_t*)malloc(frLength / 2 * sizeof(int32_t));
+
   for (i = 0; i < frLength / 4; i++) {
-    _TwParamA[i] = cos((double)(i * 8 + 1) * -M_PI / (double)(frLength * 4)) * INT32_MAX_F;
+    TwParamA[i] = cos((double)(i * 8 + 1) * -M_PI / (double)(frLength * 4)) * INT32_MAX_F;
   }
 
   for (i = 0; i < frLength / 4; i++) {
-    _TwParamB[i] = sin((double)(i * 8 + 1) * -M_PI / (double)(frLength * 4)) * INT32_MAX_F;
+    TwParamB[i] = sin((double)(i * 8 + 1) * -M_PI / (double)(frLength * 4)) * INT32_MAX_F;
   }
   for (i = 0; i < frLength / 2; i++) {
-    _TwParamC[i] = cos((double)(i * 8 + 1) * -M_PI / (double)(frLength * 4)) * INT32_MAX_F;
+    TwParamC[i] = cos((double)(i * 8 + 1) * -M_PI / (double)(frLength * 4)) * INT32_MAX_F;
   }
 
   for (i = 0; i < frLength / 2; i++) {
-    _TwParamD[i] = sin((double)(i * 8 + 1) * -M_PI / (double)(frLength * 4)) * INT32_MAX_F;
+    TwParamD[i] = sin((double)(i * 8 + 1) * -M_PI / (double)(frLength * 4)) * INT32_MAX_F;
   }
-  /**/
-  int test_mem = 4;
-  is_set_signed[0] = (int32_t*)malloc(frLength * sizeof(int32_t));
-  had_signed[0] = (int32_t*)malloc(frLength * sizeof(int32_t));
-  unpack_data[0] = (int32_t*)malloc(frLength * sizeof(int32_t));
-  ImdctOutput[0] = (int32_t*)malloc(frLength * sizeof(int32_t));
-  ImdctOutput[1] = (int32_t*)malloc(frLength * sizeof(int32_t));
-  DataFromStream[0] = (int32_t*)malloc(frLength * sizeof(int32_t));
-  DataFromStream[1] = (int32_t*)malloc(frLength * sizeof(int32_t));
-
-  fft_block1 = (int32_t*)malloc(frLength * sizeof(int32_t));
-  fft_block2 = (int32_t*)malloc(frLength * sizeof(int32_t));
-  mdct_block1 = (int32_t*)malloc(2 * frLength * sizeof(int32_t));
-  mdct_block2 = (int32_t*)malloc(2 * frLength * sizeof(int32_t));
+  return;
 }
 void LLdeinit() {
   if (g_mdctHraWindow == NULL) {
@@ -286,10 +297,10 @@ void LLdeinit() {
   free(FoldingParamA);
   free(FoldingParamB);
   free(FoldingParamC);
-  free(_TwParamA);
-  free(_TwParamB);
-  free(_TwParamC);
-  free(_TwParamD);
+  free(TwParamA);
+  free(TwParamB);
+  free(TwParamC);
+  free(TwParamD);
 
   free(ImdctPrevious[0]);
   free(ImdctPrevious[1]);
@@ -316,14 +327,14 @@ void LLdeinit() {
   FoldingParamB = NULL;
   FoldingParamC = NULL;
 
-  _TwParamA = NULL;
-  _TwParamB = NULL;
-  _TwParamC = NULL;
-  _TwParamD = NULL;
+  TwParamA = NULL;
+  TwParamB = NULL;
+  TwParamC = NULL;
+  TwParamD = NULL;
 
   ImdctPrevious[0] = NULL;
   ImdctPrevious[1] = NULL;
-  
+
   is_set_signed[0] = NULL;
   had_signed[0] = NULL;
   unpack_data[0] = NULL;
@@ -332,11 +343,12 @@ void LLdeinit() {
   ImdctOutput[1] = NULL;
   DataFromStream[0] = NULL;
   DataFromStream[1] = NULL;
-  
+
   fft_block1 = NULL;
   fft_block2 = NULL;
   mdct_block1 = NULL;
   mdct_block2 = NULL;
+  wave_pcm_buf = NULL;
 }
 
 void AudioWaveOutputFromInt24(int32_t** in, int32_t frLength, int32_t channels, int bitPerSample, void* pcm_out);
@@ -706,8 +718,7 @@ void LLunpack(int one_pack_size, int pack_index) {
           int EstimateBitCount = 0;
           for (read_nch_i = 0; read_nch_i < read_nch; read_nch_i++) {
             for (Nband_i = 0; Nband_i < newNband; Nband_i++) {
-              EstimateBitCount +=
-                  (BandId[Nband_i + 1] - BandId[Nband_i]) * (quantScale[chi + read_nch_i][Nband_i] + 2);
+              EstimateBitCount += (BandId[Nband_i + 1] - BandId[Nband_i]) * (quantScale[chi + read_nch_i][Nband_i] + 2);
             }
           }
 
@@ -957,7 +968,7 @@ void LLunpack(int one_pack_size, int pack_index) {
         }
 
         for (i = 0; i < len; i++) {
-          fft_block1[i] = (in[i] >> over_flowing_bits);  // * (len >> 1);//* (len >> 1)是因为kissfft的算法问题
+          fft_block1[i] = in[i] >> over_flowing_bits;
         }
         for (size_t i = 1, j = len - 1; i < len / 2; i += 2, j -= 2) {
           auto tmp = fft_block1[i];
@@ -995,7 +1006,7 @@ void LLunpack(int one_pack_size, int pack_index) {
         }
         int64_t normal = sqrt(0.5 / (double)len) * INT32_MAX_F;
         for (i = 0; i < len; i++) {
-          out[i] = ((normal * out[i]) >> 31) << over_flowing_bits;
+          out[i] = ((normal * out[i]) >> (31-over_flowing_bits));
         }
         return;
       };
@@ -1024,18 +1035,18 @@ void LLunpack(int one_pack_size, int pack_index) {
       ImdctOutput_chn[i] -= (uint64_t)((int64_t)RotationTable_tan[i] * (int64_t)ImdctOutput_chn[last_index - i]) >> 31;
     }
 
-    AudioDct4(&ImdctOutput_chn[half_frLength], half_frLength, mdct_block1, _TwParamA, _TwParamB, fft_cfg);
+    AudioDct4(&ImdctOutput_chn[half_frLength], half_frLength, mdct_block1, TwParamA, TwParamB, fft_cfg);
 
     for (i = 0; i < half_frLength; i++) {
       ImdctOutput_chn[i] -= (uint64_t)(0x5A827999LL * (int64_t)mdct_block1[i]) >> 31;
     }
-    AudioDct4(&ImdctOutput_chn[0], half_frLength, mdct_block1, _TwParamA, _TwParamB, fft_cfg);
+    AudioDct4(&ImdctOutput_chn[0], half_frLength, mdct_block1, TwParamA, TwParamB, fft_cfg);
     for (i = 0; i < half_frLength; i++) { /*
        ImdctOutput_chn[half_frLength + i] -= ((uint64_t)(0x7FFFFFFFA57D8668LL * (int64_t)mdct_block1[i]) >> 31)
                                              << 1;*/
       ImdctOutput_chn[half_frLength + i] -= ((uint64_t)(0x7FFFFFFFA57D8668LL * (int64_t)mdct_block1[i]) >> 30);
     }
-    AudioDct4(&ImdctOutput_chn[half_frLength], half_frLength, mdct_block1, _TwParamA, _TwParamB, fft_cfg);
+    AudioDct4(&ImdctOutput_chn[half_frLength], half_frLength, mdct_block1, TwParamA, TwParamB, fft_cfg);
     for (i = 0; i < half_frLength; i++) {
       ImdctOutput_chn[i] -= (uint64_t)(0x5A827999LL * (int64_t)mdct_block1[i]) >> 31;
       ImdctOutput_chn[i] -= (uint64_t)(0x7FFFFFFFC0000001LL * (int64_t)ImdctOutput_chn[half_frLength + i]) >> 31;
@@ -1117,10 +1128,7 @@ void LLunpack(int one_pack_size, int pack_index) {
     for (i = 0; i < half_intrinsic_delay; i++) {
       ImdctOutput_chn[i] = ImdctPrevious[chi][i];
     }
-    memcpy(
-        ImdctPrevious[chi],
-        &mdct_block2[frLength - half_intrinsic_delay],
-        half_intrinsic_delay * sizeof(int32_t));
+    memcpy(ImdctPrevious[chi], &mdct_block2[frLength - half_intrinsic_delay], half_intrinsic_delay * sizeof(int32_t));
     memcpy(&ImdctOutput_chn[half_intrinsic_delay], mdct_block2, half_intrinsic_delay * sizeof(int32_t));
     // sub_214B0
     {
