@@ -38,7 +38,7 @@ typedef struct {
   int32_t read_bits;        // 32
 } read_index2;
 FILE* bit_record = NULL;
-uint64_t ReadBitsInDWORD(read_index2* i32, int nbits) {
+uint64_t ReadBitsInDWORD(read_index2* i32, int32_t nbits) {
   uint64_t result = 0;
   if (!nbits) {
     return 0;
@@ -49,7 +49,7 @@ uint64_t ReadBitsInDWORD(read_index2* i32, int nbits) {
   }
 
   if (32 - i32->index_in_DWORD < nbits) {
-    int Remaining_bits = nbits - (32 - i32->index_in_DWORD);
+    int32_t Remaining_bits = nbits - (32 - i32->index_in_DWORD);
     result = i32->stream_buffer[i32->index_in_stream] & g_bitMask32[32 - i32->index_in_DWORD];
     result <<= Remaining_bits;
     i32->index_in_stream += 1;
@@ -72,7 +72,7 @@ void AudioAlignReadHeadToByte(read_index2* i32) {
   i32->index_in_stream = tmp >> 5;
   i32->index_in_DWORD = tmp & 0x1F;
 }
-void subi32(read_index2* i32, int nbits) {
+void subi32(read_index2* i32, int32_t nbits) {
   i32->read_bits -= nbits;
   i32->index_in_DWORD -= nbits;
   while (i32->index_in_DWORD < 0) {
@@ -97,16 +97,16 @@ void AudioBitstreamRearrangeByte(uint32_t* stream_buffer, size_t s) {
 int32_t smpRate_table[4] = {44100, 48000, 88200, 96000};
 int32_t frLength_table[4] = {120, 240, 480, 960};
 
-void AudioGetBandId(int32* a1, int Nband, int frLength, double a4) {
+void AudioGetBandId(int32* a1, int32_t Nband, int32_t frLength, double a4) {
   double v8;   // d0
   double tmp;  // d9
-  int tmp2;    // w8
+  int32_t tmp2;    // w8
 
   *a1 = 0;
   if (Nband >= 1) {
     tmp = (double)Nband / pow(frLength, 1.0 / a4);
-    for (int Nbandi = 1; Nbandi < Nband; Nbandi++) {
-      tmp2 = (int)pow((double)Nbandi / tmp, a4);
+    for (int32_t Nbandi = 1; Nbandi < Nband; Nbandi++) {
+      tmp2 = (int32_t)pow((double)Nbandi / tmp, a4);
       if (Nbandi > tmp2) {
         tmp2 = Nbandi;
       }
@@ -351,8 +351,8 @@ void LLdeinit() {
   wave_pcm_buf = NULL;
 }
 
-void AudioWaveOutputFromInt24(int32_t** in, int32_t frLength, int32_t channels, int bitPerSample, void* pcm_out);
-void LLunpack(int one_pack_size, int pack_index) {
+void AudioWaveOutputFromInt24(int32_t** in, int32_t frLength, int32_t channels, int32_t bitPerSample, void* pcm_out);
+void LLunpack(int32_t one_pack_size, int32_t pack_index) {
   uint32_t* stream_buffer_s32 = (uint32_t*)stream_buffer;
   AudioBitstreamRearrangeByte(stream_buffer_s32, one_pack_size);
 
@@ -612,7 +612,7 @@ void LLunpack(int one_pack_size, int pack_index) {
         for (newNband = 0; newNband < Nband; newNband++) {
           next_val = BandId[newNband + 1];
           if (pre_val < next_val) {
-            int iVar6 = (int)((double)frLength * tmp_f1);
+            int32_t iVar6 = (int32_t)((double)frLength * tmp_f1);
             if (iVar6 <= pre_val) {
               iVar6 = pre_val;
             }
@@ -663,21 +663,21 @@ void LLunpack(int one_pack_size, int pack_index) {
         memcpy(psyScalefactor_bak, quantScale[chi], sizeof(int32_t) * Nband * read_nch);
         memcpy(psyScalefactor, quantScale[chi], sizeof(int32_t) * Nband * read_nch);
         memset(quantScale[chi], 0, sizeof(int32_t) * Nband * read_nch);
-        auto AudioBandPsyAcoustic = [](int* p_psyScalefactor, int nband, int x, int* out) {
-          int max = p_psyScalefactor[0];
+        auto AudioBandPsyAcoustic = [](int* p_psyScalefactor, int32_t nband, int32_t x, int* out) {
+          int32_t max = p_psyScalefactor[0];
           for (size_t i = 0; i < nband; i++) {
             if (max < p_psyScalefactor[i]) {
               max = p_psyScalefactor[i];
             }
           }
           if (max < 1) {
-            memset(out, 0, sizeof(int) * nband);
+            memset(out, 0, sizeof(int32_t) * nband);
             return 0;
           }
           if (max == 1) {
-            memcpy(out, p_psyScalefactor, sizeof(int) * nband);
+            memcpy(out, p_psyScalefactor, sizeof(int32_t) * nband);
           } else {
-            int min = max - x;
+            int32_t min = max - x;
             if (min <= 0) {
               min = 0;
             }
@@ -689,11 +689,11 @@ void LLunpack(int one_pack_size, int pack_index) {
         };
         int32_t(*inner_mem_pool3)[Nband];
         *(int32_t**)&inner_mem_pool3 = new int32_t[read_nch * Nband];
-        int continue_flag = 0;
-        int loop_index = 0;
+        int32_t continue_flag = 0;
+        int32_t loop_index = 0;
 
         do {
-          int x1 = 3 * ((++loop_index) % 3);
+          int32_t x1 = 3 * ((++loop_index) % 3);
           if (x1 < 1) {
             x1 = 1;
           }
@@ -708,7 +708,7 @@ void LLunpack(int one_pack_size, int pack_index) {
             }
           }
           // AudioEstimateBitCount
-          int EstimateBitCount = 0;
+          int32_t EstimateBitCount = 0;
           for (read_nch_i = 0; read_nch_i < read_nch; read_nch_i++) {
             for (Nband_i = 0; Nband_i < newNband; Nband_i++) {
               EstimateBitCount += (BandId[Nband_i + 1] - BandId[Nband_i]) * (quantScale[chi + read_nch_i][Nband_i] + 2);
@@ -835,7 +835,7 @@ void LLunpack(int one_pack_size, int pack_index) {
         }
         printf("\n");
         */
-        auto AudioGetBandQsTotal = [](int* psyScalefactor, int Nband, int* pBandId) {
+        auto AudioGetBandQsTotal = [](int* psyScalefactor, int32_t Nband, int* pBandId) {
           uint16_t res = 0;
           for (size_t Nband_i = 0; Nband_i < Nband; Nband_i++) {
             res += (pBandId[Nband_i + 1] - pBandId[Nband_i]) * psyScalefactor[Nband_i];
@@ -1155,16 +1155,16 @@ void LLunpack(int one_pack_size, int pack_index) {
 
   return;
 }
-void AudioWaveOutputFromInt24(int32_t** in, int32_t frLength, int32_t channels, int bitPerSample, void* pcm_out) {
+void AudioWaveOutputFromInt24(int32_t** in, int32_t frLength, int32_t channels, int32_t bitPerSample, void* pcm_out) {
   switch (bitPerSample) {
     case -32: {
       for (size_t i = 0; i < channels; i++) {
         for (size_t j = 0; j < frLength; j++) {
-          auto sample = in[i][j];
+          int32_t sample = in[i][j];
           if (sample < -0x800000) {
             sample = -0x800000;
           } else if (sample > 0x800000) {
-            sample = 0x800000;
+            sample = 0x7FFFFF;
           }
           *((float*)pcm_out + i + j * channels) = (double)sample / ((double)0x800000);
         }
@@ -1173,11 +1173,11 @@ void AudioWaveOutputFromInt24(int32_t** in, int32_t frLength, int32_t channels, 
     case 16: {
       for (size_t i = 0; i < channels; i++) {
         for (size_t j = 0; j < frLength; j++) {
-          auto sample = in[i][j];
+          int32_t sample = in[i][j];
           if (sample < -0x800000) {
             sample = -0x800000;
           } else if (sample > 0x800000) {
-            sample = 0x800000;
+            sample = 0x7FFFFF;
           }
           sample >>= 8;
           *((int16_t*)pcm_out + i + j * channels) = sample;
@@ -1187,11 +1187,11 @@ void AudioWaveOutputFromInt24(int32_t** in, int32_t frLength, int32_t channels, 
     case 24: {
       for (size_t i = 0; i < channels; i++) {
         for (size_t j = 0; j < frLength; j++) {
-          auto sample = in[i][j];
+          int32_t sample = in[i][j];
           if (sample < -0x800000) {
             sample = -0x800000;
           } else if (sample > 0x800000) {
-            sample = 0x800000;
+            sample = 0x7FFFFF;
           }
           ((uint8_t*)pcm_out + (i + j * channels) * 3)[0] = ((uint8_t*)(&sample))[0];
           ((uint8_t*)pcm_out + (i + j * channels) * 3)[1] = ((uint8_t*)(&sample))[1];
@@ -1202,11 +1202,11 @@ void AudioWaveOutputFromInt24(int32_t** in, int32_t frLength, int32_t channels, 
     case 32: {
       for (size_t i = 0; i < channels; i++) {
         for (size_t j = 0; j < frLength; j++) {
-          auto sample = in[i][j];
+          int32_t sample = in[i][j];
           if (sample < -0x800000) {
             sample = -0x800000;
           } else if (sample > 0x800000) {
-            sample = 0x800000;
+            sample = 0x7FFFFF;
           }
           sample <<= 8;
           *(((int32_t*)pcm_out) + i + j * channels) = sample;
@@ -1219,30 +1219,30 @@ void AudioWaveOutputFromInt24(int32_t** in, int32_t frLength, int32_t channels, 
 }
 
 char x[100];
-int main() {
+int32_t main() {
   // bit_record = fopen("E:/codec/L2HC/bit_record3.bin", "wb");
   FILE* fp = NULL;
   fp = fopen("./48kS32_enc.bin", "rb");
 
-  int read_count = 0;
-  int one_pack_size = 0;
+  int32_t read_count = 0;
+  int32_t one_pack_size = 0;
 
   fseek(fp, 0, SEEK_END);
 
-  int file_size = ftell(fp);
+  int32_t file_size = ftell(fp);
   fseek(fp, 0, SEEK_SET);
 #if 1
   size_t i = 0;
   wave_file_out = fopen("./48kS32_tests.wav", "wb");
   memset(x, ' ', sizeof(x));
   x[5 + 52] = 0;
-  int old_rate = -1;
+  int32_t old_rate = -1;
   for (i = 0; read_count < file_size; i++) {
     fread(&one_pack_size, 1, 4, fp);
     fread(stream_buffer, 1, one_pack_size, fp);
     read_count += one_pack_size + 4;
 
-    int rate = (int)(((double)read_count) * 100. / (double)file_size);
+    int32_t rate = (int32_t)(((double)read_count) * 100. / (double)file_size);
     if (rate != old_rate) {
       sprintf(&x[0], "%3d", rate);
       x[3] = '%';
