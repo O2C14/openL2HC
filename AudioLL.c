@@ -528,7 +528,7 @@ void LLunpack(int32_t one_pack_size, int32_t pack_index) {
     LLinit(frLength, intrinsic_delay);
 
     old_frLength = frLength;
-   // wave_write_header(wave_file_out, bitPerSample, (bitPerSample >> 3), smpRate2, channels, frLength);
+   wave_write_header(wave_file_out, bitPerSample, (bitPerSample >> 3), smpRate2, channels, frLength);
   }
   int32_t half_active_length = (frLength - intrinsic_delay) / 2;
   if (old_band_split_scale != band_split_scale) {
@@ -1144,7 +1144,7 @@ void LLunpack(int32_t one_pack_size, int32_t pack_index) {
 
   AudioWaveOutputFromInt24((int32_t**)ImdctOutput, frLength, channels, bitPerSample, wave_pcm_buf);
 
-  //fwrite(wave_pcm_buf, 1, frLength * channels * bitPerSample >> 3, wave_file_out);
+  fwrite(wave_pcm_buf, 1, frLength * channels * bitPerSample >> 3, wave_file_out);
 
   return;
 }
@@ -1156,7 +1156,7 @@ void AudioWaveOutputFromInt24(int32_t** in, int32_t frLength, int32_t channels, 
           int32_t sample = in[i][j];
           if (sample < -0x800000) {
             sample = -0x800000;
-          } else if (sample > 0x800000) {
+          } else if (sample >= 0x7FFFFF) {
             sample = 0x7FFFFF;
           }
           *((float*)pcm_out + i + j * channels) = (double)sample / ((double)0x800000);
@@ -1169,7 +1169,7 @@ void AudioWaveOutputFromInt24(int32_t** in, int32_t frLength, int32_t channels, 
           int32_t sample = in[i][j];
           if (sample < -0x800000) {
             sample = -0x800000;
-          } else if (sample > 0x800000) {
+          } else if (sample >= 0x7FFFFF) {
             sample = 0x7FFFFF;
           }
           sample >>= 8;
@@ -1183,7 +1183,7 @@ void AudioWaveOutputFromInt24(int32_t** in, int32_t frLength, int32_t channels, 
           int32_t sample = in[i][j];
           if (sample < -0x800000) {
             sample = -0x800000;
-          } else if (sample > 0x800000) {
+          } else if (sample >= 0x7FFFFF) {
             sample = 0x7FFFFF;
           }
           ((uint8_t*)pcm_out + (i + j * channels) * 3)[0] = ((uint8_t*)(&sample))[0];
@@ -1198,7 +1198,7 @@ void AudioWaveOutputFromInt24(int32_t** in, int32_t frLength, int32_t channels, 
           int32_t sample = in[i][j];
           if (sample < -0x800000) {
             sample = -0x800000;
-          } else if (sample > 0x800000) {
+          } else if (sample >= 0x7FFFFF) {
             sample = 0x7FFFFF;
           }
           sample <<= 8;
@@ -1215,7 +1215,7 @@ char x[100];
 int32_t main() {
   // bit_record = fopen("E:/codec/L2HC/bit_record3.bin", "wb");
   FILE* fp = NULL;
-  fp = fopen("./512kMS_enc.bin", "rb");
+  fp = fopen("../512kMS_enc.bin", "rb");
 
   int32_t read_count = 0;
   int32_t one_pack_size = 0;
