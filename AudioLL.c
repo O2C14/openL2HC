@@ -533,7 +533,7 @@ void LLunpack(int32_t one_pack_size, int32_t pack_index) {
   int32_t half_active_length = (frLength - intrinsic_delay) / 2;
   if (old_band_split_scale != band_split_scale) {
     AudioGetBandId(BandId, Nband, frLength, (double)band_split_scale);
-    band_split_scale = old_band_split_scale;
+    old_band_split_scale = band_split_scale;
   }
 
   int32_t sel_FoldingParamA = 0;
@@ -717,21 +717,14 @@ void LLunpack(int32_t one_pack_size, int32_t pack_index) {
         for (read_nch_i = 0; read_nch_i < read_nch; read_nch_i++) {
           diffFlag[read_nch_i] = ReadBitsInDWORD(&i32, 1);
         }
-        double tmp_f1 = fmin(fmax(sqrt((double)Remaining_Bits_Per_Channel / (double)(frLength * read_nch)), 0.2), 1.0);
+        double new_frLengthScale = fmin(fmax(sqrt((double)Remaining_Bits_Per_Channel / (double)(frLength * read_nch)), 0.2), 1.0);
         int32_t newNband = 0;
         int32_t pre_val = BandId[0], next_val = 0;
+        int32_t new_frLength = (int32_t)((double)frLength * new_frLengthScale);
         for (newNband = 0; newNband < Nband; newNband++) {
           next_val = BandId[newNband + 1];
-          if (pre_val < next_val) {
-            int32_t iVar6 = (int32_t)((double)frLength * tmp_f1);
-            if (iVar6 <= pre_val) {
-              iVar6 = pre_val;
-            }
-            iVar6 = iVar6 - pre_val;
-            pre_val = next_val - pre_val;
-            if (iVar6 < pre_val || iVar6 == 0) {
-              break;
-            }
+          if(pre_val<=new_frLength && new_frLength<next_val){
+            break;
           }
           pre_val = next_val;
         }
@@ -1215,7 +1208,7 @@ char x[100];
 int32_t main() {
   // bit_record = fopen("E:/codec/L2HC/bit_record3.bin", "wb");
   FILE* fp = NULL;
-  fp = fopen("../512kMS_enc.bin", "rb");
+  fp = fopen("./8dw_enc.bin", "rb");
 
   int32_t read_count = 0;
   int32_t one_pack_size = 0;
@@ -1226,7 +1219,7 @@ int32_t main() {
   fseek(fp, 0, SEEK_SET);
 #if 1
   size_t i = 0;
-  wave_file_out = fopen("./512kMS_tests.wav", "wb");
+  wave_file_out = fopen("./8dw_tests.wav", "wb");
   memset(x, ' ', sizeof(x));
   x[5 + 52] = 0;
   int32_t old_rate = -1;
