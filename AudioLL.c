@@ -37,10 +37,12 @@ uint64_t ReadBitsInDWORD(read_index2* i32, int32_t nbits) {
   if (!nbits) {
     return 0;
   }
-  if ((i32->total_bits) < (i32->read_bits + nbits)) {
+  /*
+  if ((i32->read_bits + nbits-i32->total_bits)>=8) {
     // puts("bits is not enough");
     return 0;
   }
+  */
 
   if (32 - i32->index_in_DWORD < nbits) {
     int32_t Remaining_bits = nbits - (32 - i32->index_in_DWORD);
@@ -1213,7 +1215,7 @@ char x[100];
 int32_t main() {
   // bit_record = fopen("E:/codec/L2HC/bit_record3.bin", "wb");
   FILE* fp = NULL;
-  fp = fopen("./8dw_enc.bin", "rb");
+  fp = fopen("./512kMS_enc.bin", "rb");
 
   int32_t read_count = 0;
   int32_t one_pack_size = 0;
@@ -1224,7 +1226,7 @@ int32_t main() {
   fseek(fp, 0, SEEK_SET);
 #if 1
   size_t i = 0;
-  wave_file_out = fopen("./8dw_tests.wav", "wb");
+  wave_file_out = fopen("./512kMS_tests.wav", "wb");
   memset(x, ' ', sizeof(x));
   x[5 + 52] = 0;
   int32_t old_rate = -1;
@@ -1245,10 +1247,7 @@ int32_t main() {
       old_rate = rate;
     }
     LLunpack(one_pack_size, i);
-    /*
-    if(i==2){
-      break;
-    }*/
+
   }
   LLdeinit();
   printf("\n");
@@ -1265,7 +1264,7 @@ int32_t main() {
     fread(stream_buffer, 1, one_pack_size, fp);
     read_count += one_pack_size + 4;
     //printf("%d\n",i);
-    if(i == 536)
+    if(i == 290)
     {
       LLunpack(one_pack_size, i);
     }
